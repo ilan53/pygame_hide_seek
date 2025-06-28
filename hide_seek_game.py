@@ -48,6 +48,17 @@ class HideSeekGame:
         self.computer_think_time = 0
         self.player1_moved_target = False
         self.player2_moved_target = False
+        
+        # Block system variables
+        self.blocks = []  # List of block positions and orientations
+        self.player1_blocks_remaining = 1
+        self.player2_blocks_remaining = 1
+        self.place_block_button = None
+        self.block_placement_mode = False
+        self.block_orientation = "horizontal"  # "horizontal" or "vertical"
+        # Block preview variables
+        self.block_preview_pos = None  # (x, y) position for preview
+        self.block_preview_valid = False  # Whether the preview position is valid
 
         self.tom_images = {
             "up": pygame.image.load("tom/tom_walking_up.png"),
@@ -70,6 +81,10 @@ class HideSeekGame:
         for key in self.spike_images:
             self.spike_images[key] = pygame.transform.scale(self.spike_images[key], (CELL_SIZE, CELL_SIZE))
         self.spike_direction = "idle"
+
+        # Load block images
+        self.block_horizontal = pygame.transform.scale(pygame.image.load("assets/block_horizontal.png"), (CELL_SIZE * 2, CELL_SIZE))
+        self.block_vertical = pygame.transform.scale(pygame.image.load("assets/block_vertical.png"), (CELL_SIZE, CELL_SIZE * 2))
 
         self.jerry_images = [
             pygame.transform.scale(pygame.image.load("jerry/jerry_hiding1.png"), (CELL_SIZE, CELL_SIZE)),
@@ -153,12 +168,73 @@ class HideSeekGame:
 
     def generate_hiding_spots(self):
         self.hiding_spots = []
-        for _ in range(random.randint(8, 12)):
+        # Define starting positions that should be excluded
+        excluded_positions = [(0, 0), (7, 7)]  # Tom's and Spike's starting positions
+        
+        for _ in range(random.randint(6, 8)):
             while True:
                 pos = (random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1))
-                if pos not in self.hiding_spots:
+                if pos not in self.hiding_spots and pos not in excluded_positions:
                     self.hiding_spots.append(pos)
                     break
+
+    def is_position_blocked(self, pos):
+        """Check if a position is blocked by any block"""
+        x, y = pos
+        for block in self.blocks:
+            block_x, block_y, orientation = block
+            if orientation == "horizontal":
+                if x == block_x and y == block_y or x == block_x and y == block_y + 1:
+                    return True
+            else:  # vertical
+                if x == block_x and y == block_y or x == block_x + 1 and y == block_y:
+                    return True
+        return False
+
+    def can_place_block(self, x, y, orientation):
+        """Check if a block can be placed at the given position and orientation"""
+        if orientation == "horizontal":
+            # Check if both cells are within bounds
+            if y + 1 >= GRID_SIZE:
+                return False
+            # Check if either cell is blocked
+            if self.is_position_blocked((x, y)) or self.is_position_blocked((x, y + 1)):
+                return False
+            # Check if either cell is occupied by a player
+            if (x, y) == self.seeker1_pos or (x, y) == self.seeker2_pos:
+                return False
+            if (x, y + 1) == self.seeker1_pos or (x, y + 1) == self.seeker2_pos:
+                return False
+            # Check if either cell is a hiding spot
+            if (x, y) in self.hiding_spots or (x, y + 1) in self.hiding_spots:
+                return False
+        else:  # vertical
+            # Check if both cells are within bounds
+            if x + 1 >= GRID_SIZE:
+                return False
+            # Check if either cell is blocked
+            if self.is_position_blocked((x, y)) or self.is_position_blocked((x + 1, y)):
+                return False
+            # Check if either cell is occupied by a player
+            if (x, y) == self.seeker1_pos or (x, y) == self.seeker2_pos:
+                return False
+            if (x + 1, y) == self.seeker1_pos or (x + 1, y) == self.seeker2_pos:
+                return False
+            # Check if either cell is a hiding spot
+            if (x, y) in self.hiding_spots or (x + 1, y) in self.hiding_spots:
+                return False
+        return True
+
+    def place_block(self, x, y, orientation, player):
+        """Place a block at the given position and orientation"""
+        if self.can_place_block(x, y, orientation):
+            self.blocks.append((x, y, orientation))
+            if player == 1:
+                self.player1_blocks_remaining -= 1
+            else:
+                self.player2_blocks_remaining -= 1
+            return True
+        return False
 
     def a_star_distance(self, start, goal):
         if start == goal:
@@ -172,6 +248,9 @@ class HideSeekGame:
             for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
                 neighbor = (current[0]+dx, current[1]+dy)
                 if 0 <= neighbor[0] < GRID_SIZE and 0 <= neighbor[1] < GRID_SIZE:
+                    # Check if the neighbor position is blocked
+                    if self.is_position_blocked(neighbor):
+                        continue
                     temp = g_score[current] + 1
                     if neighbor not in g_score or temp < g_score[neighbor]:
                         g_score[neighbor] = temp
@@ -206,6 +285,17 @@ class HideSeekGame:
                 self.state = GameState.PLAYER1_TURN
                 return
         
+        # Decide whether to place a block or move
+        player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+        computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+        
+        # Place block if player is close to Jerry and computer has blocks remaining
+        if (player_dist <= 3 and computer_dist > player_dist and 
+            self.player2_blocks_remaining > 0 and random.random() < 0.7):
+            if self.computer_place_block():
+                self.state = GameState.PLAYER1_TURN
+                return
+        
         # Regular movement logic
         best_move = None
         best_score = float('inf')
@@ -215,6 +305,10 @@ class HideSeekGame:
         for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
             nx, ny = x+dx, y+dy
             if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                # Check if the move is blocked
+                if self.is_position_blocked((nx, ny)):
+                    continue
+                    
                 d = self.a_star_distance((nx, ny), self.hidden_pos)
                 
                 # Bonus score for moving towards Jerry
@@ -266,6 +360,40 @@ class HideSeekGame:
                 if self.state == GameState.GAME_OVER and (x, y) == self.hidden_pos:
                     screen.blit(self.jerry_image, rect.topleft)
                 pygame.draw.rect(screen, BLACK, rect, 2)
+        
+        # Draw blocks
+        for block in self.blocks:
+            x, y, orientation = block
+            if orientation == "horizontal":
+                block_rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE * 2, CELL_SIZE)
+                screen.blit(self.block_horizontal, block_rect.topleft)
+            else:  # vertical
+                block_rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE * 2)
+                screen.blit(self.block_vertical, block_rect.topleft)
+        
+        # Draw block preview
+        if self.block_placement_mode and self.block_preview_pos is not None:
+            x, y = self.block_preview_pos
+            preview_color = GREEN if self.block_preview_valid else RED
+            
+            if self.block_orientation == "horizontal":
+                # Draw preview rectangle for horizontal block
+                preview_rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE * 2, CELL_SIZE)
+                pygame.draw.rect(screen, preview_color, preview_rect, 3)
+                # Draw semi-transparent overlay
+                preview_surface = pygame.Surface((CELL_SIZE * 2, CELL_SIZE))
+                preview_surface.set_alpha(100)
+                preview_surface.fill(preview_color)
+                screen.blit(preview_surface, preview_rect.topleft)
+            else:  # vertical
+                # Draw preview rectangle for vertical block
+                preview_rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE * 2)
+                pygame.draw.rect(screen, preview_color, preview_rect, 3)
+                # Draw semi-transparent overlay
+                preview_surface = pygame.Surface((CELL_SIZE, CELL_SIZE * 2))
+                preview_surface.set_alpha(100)
+                preview_surface.fill(preview_color)
+                screen.blit(preview_surface, preview_rect.topleft)
 
     def draw_ui(self):
         ui_x = WIDTH + 10
@@ -278,32 +406,64 @@ class HideSeekGame:
                 screen.blit(self.font.render(f"Tom→Jerry: {dist1} steps", True, BLACK), (ui_x, 80))
                 screen.blit(self.font.render(f"Spike→Jerry: {dist2} steps", True, BLACK), (ui_x, 110))
             
+            # Show remaining blocks
+            screen.blit(self.font.render(f"Tom blocks: {self.player1_blocks_remaining}", True, BLACK), (ui_x, 140))
+            screen.blit(self.font.render(f"Spike blocks: {self.player2_blocks_remaining}", True, BLACK), (ui_x, 170))
+            
             # Show computer thinking indicator
             if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
                 if not self.player2_moved_target:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 140))
-                    screen.blit(self.font.render("(Can use Move Target)", True, ORANGE), (ui_x, 160))
+                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 200))
+                    screen.blit(self.font.render("(Can use Move Target)", True, ORANGE), (ui_x, 220))
                 else:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 140))
+                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 200))
             
             # Draw Move Target button for current player if they haven't used it
             if self.state == GameState.PLAYER1_TURN and not self.player1_moved_target:
-                self.move_target_button = pygame.Rect(ui_x, 200, 180, 40)
+                self.move_target_button = pygame.Rect(ui_x, 260, 180, 40)
                 pygame.draw.rect(screen, (100, 200, 100), self.move_target_button)
                 move_text = self.font.render("Move Target (Tom)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
             elif self.state == GameState.PLAYER2_TURN and not self.player2_moved_target and self.game_mode == 'pvp':
-                self.move_target_button = pygame.Rect(ui_x, 200, 180, 40)
+                self.move_target_button = pygame.Rect(ui_x, 260, 180, 40)
                 pygame.draw.rect(screen, (200, 100, 100), self.move_target_button)
                 move_text = self.font.render("Move Target (Spike)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
             else:
                 self.move_target_button = None
+            
+            # Draw Place Block button for current player if they have blocks remaining
+            current_player = 1 if self.state == GameState.PLAYER1_TURN else 2
+            blocks_remaining = self.player1_blocks_remaining if current_player == 1 else self.player2_blocks_remaining
+            
+            if blocks_remaining > 0:
+                self.place_block_button = pygame.Rect(ui_x, 320, 180, 40)
+                button_color = (100, 150, 200) if current_player == 1 else (200, 100, 150)
+                pygame.draw.rect(screen, button_color, self.place_block_button)
+                player_name = "Tom" if current_player == 1 else "Spike"
+                block_text = self.font.render(f"Place Block ({player_name})", True, (0, 0, 0))
+                block_rect = block_text.get_rect(center=self.place_block_button.center)
+                screen.blit(block_text, block_rect)
+                
+                # Show current block orientation
+                orientation_text = self.font.render(f"Orientation: {self.block_orientation}", True, BLACK)
+                screen.blit(orientation_text, (ui_x, 370))
+                screen.blit(self.font.render("Press 'R' to rotate", True, BLACK), (ui_x, 390))
+                
+                # Show block placement instructions
+                if self.block_placement_mode:
+                    screen.blit(self.font.render("Click on grid to place block", True, RED), (ui_x, 410))
+                    if self.block_preview_valid:
+                        screen.blit(self.font.render("Green = Valid placement", True, GREEN), (ui_x, 430))
+                    else:
+                        screen.blit(self.font.render("Red = Invalid placement", True, RED), (ui_x, 430))
+            else:
+                self.place_block_button = None
                 
         if self.feedback_text in self.feedback_images:
-            screen.blit(self.feedback_images[self.feedback_text], (ui_x, 250))
+            screen.blit(self.feedback_images[self.feedback_text], (ui_x, 420))
         elif self.state == GameState.GAME_OVER:
             screen.blit(self.big_font.render(f"{self.winner} Wins!", True, BLACK), (ui_x, 50))
             screen.blit(self.font.render("Press any key to restart", True, BLACK), (ui_x, 100))
@@ -349,6 +509,86 @@ class HideSeekGame:
         self.state = GameState.PLAYER1_TURN
         self.player1_moved_target = False
         self.player2_moved_target = False
+        # Reset block system
+        self.blocks = []
+        self.player1_blocks_remaining = 1
+        self.player2_blocks_remaining = 1
+        self.block_placement_mode = False
+        self.block_orientation = "horizontal"
+        self.block_preview_pos = None
+        self.block_preview_valid = False
+
+    def computer_place_block(self):
+        """Computer places a block strategically to interfere with player's path"""
+        if self.player2_blocks_remaining <= 0:
+            return False
+            
+        player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+        computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+        
+        # Only place block if player is closer to Jerry than computer
+        if player_dist >= computer_dist:
+            return False
+        
+        # Try to block the player's path
+        best_block = None
+        best_impact = 0
+        
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                # Try horizontal block
+                if self.can_place_block(x, y, "horizontal"):
+                    # Check if this block would block the player's path
+                    old_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    
+                    # Temporarily place block
+                    self.blocks.append((x, y, "horizontal"))
+                    new_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.pop()  # Remove temporary block
+                    
+                    # Calculate impact (how much it increases player's path)
+                    impact = new_dist - old_dist
+                    if impact > best_impact and new_dist != float('inf'):
+                        best_impact = impact
+                        best_block = (x, y, "horizontal")
+                
+                # Try vertical block
+                if self.can_place_block(x, y, "vertical"):
+                    # Check if this block would block the player's path
+                    old_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    
+                    # Temporarily place block
+                    self.blocks.append((x, y, "vertical"))
+                    new_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.pop()  # Remove temporary block
+                    
+                    # Calculate impact (how much it increases player's path)
+                    impact = new_dist - old_dist
+                    if impact > best_impact and new_dist != float('inf'):
+                        best_impact = impact
+                        best_block = (x, y, "vertical")
+        
+        # Place the best block if it has significant impact
+        if best_block and best_impact >= 2:
+            x, y, orientation = best_block
+            self.place_block(x, y, orientation, 2)
+            return True
+        
+        # If no good strategic block found, try to block near the player's current position
+        if player_dist <= 3:
+            for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
+                nx, ny = self.seeker1_pos[0] + dx, self.seeker1_pos[1] + dy
+                if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                    # Try horizontal block near player
+                    if self.can_place_block(nx, ny, "horizontal"):
+                        self.place_block(nx, ny, "horizontal", 2)
+                        return True
+                    # Try vertical block near player
+                    if self.can_place_block(nx, ny, "vertical"):
+                        self.place_block(nx, ny, "vertical", 2)
+                        return True
+        
+        return False
 
     def run(self):
         self.show_title_screen()
@@ -363,24 +603,36 @@ class HideSeekGame:
                         self.start_game()
                         player_turn = 1
                     elif self.state == GameState.PLAYER1_TURN:
+                        # Block rotation
+                        if event.key == pygame.K_r:
+                            self.block_orientation = "vertical" if self.block_orientation == "horizontal" else "horizontal"
+                        # Movement with block checking
                         x, y = self.seeker1_pos
                         moved = False
                         if event.key == pygame.K_UP and x > 0:
-                            self.seeker1_pos = (x - 1, y)
-                            self.tom_direction = "up"
-                            moved = True
+                            new_pos = (x - 1, y)
+                            if not self.is_position_blocked(new_pos):
+                                self.seeker1_pos = new_pos
+                                self.tom_direction = "up"
+                                moved = True
                         elif event.key == pygame.K_DOWN and x < GRID_SIZE - 1:
-                            self.seeker1_pos = (x + 1, y)
-                            self.tom_direction = "down"
-                            moved = True
+                            new_pos = (x + 1, y)
+                            if not self.is_position_blocked(new_pos):
+                                self.seeker1_pos = new_pos
+                                self.tom_direction = "down"
+                                moved = True
                         elif event.key == pygame.K_LEFT and y > 0:
-                            self.seeker1_pos = (x, y - 1)
-                            self.tom_direction = "left"
-                            moved = True
+                            new_pos = (x, y - 1)
+                            if not self.is_position_blocked(new_pos):
+                                self.seeker1_pos = new_pos
+                                self.tom_direction = "left"
+                                moved = True
                         elif event.key == pygame.K_RIGHT and y < GRID_SIZE - 1:
-                            self.seeker1_pos = (x, y + 1)
-                            self.tom_direction = "right"
-                            moved = True
+                            new_pos = (x, y + 1)
+                            if not self.is_position_blocked(new_pos):
+                                self.seeker1_pos = new_pos
+                                self.tom_direction = "right"
+                                moved = True
                         if moved:
                             self.steps_remaining -= 1
                             if self.seeker1_pos == self.hidden_pos:
@@ -398,24 +650,36 @@ class HideSeekGame:
                                     self.state = GameState.PLAYER2_TURN
                     elif self.state == GameState.PLAYER2_TURN:
                         if self.game_mode == 'pvp':
+                            # Block rotation
+                            if event.key == pygame.K_r:
+                                self.block_orientation = "vertical" if self.block_orientation == "horizontal" else "horizontal"
+                            # Movement with block checking
                             x, y = self.seeker2_pos
                             moved = False
                             if event.key == pygame.K_w and x > 0:
-                                self.seeker2_pos = (x - 1, y)
-                                self.spike_direction = "up"
-                                moved = True
+                                new_pos = (x - 1, y)
+                                if not self.is_position_blocked(new_pos):
+                                    self.seeker2_pos = new_pos
+                                    self.spike_direction = "up"
+                                    moved = True
                             elif event.key == pygame.K_s and x < GRID_SIZE - 1:
-                                self.seeker2_pos = (x + 1, y)
-                                self.spike_direction = "down"
-                                moved = True
+                                new_pos = (x + 1, y)
+                                if not self.is_position_blocked(new_pos):
+                                    self.seeker2_pos = new_pos
+                                    self.spike_direction = "down"
+                                    moved = True
                             elif event.key == pygame.K_a and y > 0:
-                                self.seeker2_pos = (x, y - 1)
-                                self.spike_direction = "left"
-                                moved = True
+                                new_pos = (x, y - 1)
+                                if not self.is_position_blocked(new_pos):
+                                    self.seeker2_pos = new_pos
+                                    self.spike_direction = "left"
+                                    moved = True
                             elif event.key == pygame.K_d and y < GRID_SIZE - 1:
-                                self.seeker2_pos = (x, y + 1)
-                                self.spike_direction = "right"
-                                moved = True
+                                new_pos = (x, y + 1)
+                                if not self.is_position_blocked(new_pos):
+                                    self.seeker2_pos = new_pos
+                                    self.spike_direction = "right"
+                                    moved = True
                             if moved:
                                 self.steps_remaining -= 1
                                 if self.seeker2_pos == self.hidden_pos:
@@ -446,6 +710,43 @@ class HideSeekGame:
                             self.player2_moved_target = True
                             # End turn and switch to player 1
                             self.state = GameState.PLAYER1_TURN
+                    elif self.place_block_button and self.place_block_button.collidepoint(event.pos):
+                        # Enter block placement mode
+                        self.block_placement_mode = True
+                    elif self.block_placement_mode:
+                        # Handle block placement
+                        mouse_x, mouse_y = event.pos
+                        if mouse_x < WIDTH:  # Click is on the grid
+                            grid_x = mouse_y // CELL_SIZE
+                            grid_y = mouse_x // CELL_SIZE
+                            if 0 <= grid_x < GRID_SIZE and 0 <= grid_y < GRID_SIZE:
+                                current_player = 1 if self.state == GameState.PLAYER1_TURN else 2
+                                if self.place_block(grid_x, grid_y, self.block_orientation, current_player):
+                                    self.block_placement_mode = False
+                                    self.block_preview_pos = None
+                                    # End turn after placing block
+                                    if self.game_mode == 'pvp':
+                                        if self.state == GameState.PLAYER1_TURN:
+                                            self.state = GameState.PLAYER2_TURN
+                                        else:
+                                            self.state = GameState.PLAYER1_TURN
+                                    else:
+                                        if self.state == GameState.PLAYER1_TURN:
+                                            self.state = GameState.PLAYER2_TURN
+                elif event.type == pygame.MOUSEMOTION:
+                    # Update block preview position
+                    if self.block_placement_mode:
+                        mouse_x, mouse_y = event.pos
+                        if mouse_x < WIDTH:  # Mouse is on the grid
+                            grid_x = mouse_y // CELL_SIZE
+                            grid_y = mouse_x // CELL_SIZE
+                            if 0 <= grid_x < GRID_SIZE and 0 <= grid_y < GRID_SIZE:
+                                self.block_preview_pos = (grid_x, grid_y)
+                                self.block_preview_valid = self.can_place_block(grid_x, grid_y, self.block_orientation)
+                            else:
+                                self.block_preview_pos = None
+                        else:
+                            self.block_preview_pos = None
 
             if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
                 if not self.computer_thinking:
