@@ -86,6 +86,9 @@ class HideSeekGame:
         self.block_horizontal = pygame.transform.scale(pygame.image.load("assets/block_horizontal.png"), (CELL_SIZE * 2, CELL_SIZE))
         self.block_vertical = pygame.transform.scale(pygame.image.load("assets/block_vertical.png"), (CELL_SIZE, CELL_SIZE * 2))
 
+        # Load cheese wedge image for hiding spots
+        self.cheese_image = pygame.transform.scale(pygame.image.load("assets/Cheese-wedge.png"), (CELL_SIZE, CELL_SIZE))
+
         self.jerry_images = [
             pygame.transform.scale(pygame.image.load("jerry/jerry_hiding1.png"), (CELL_SIZE, CELL_SIZE)),
             pygame.transform.scale(pygame.image.load("jerry/jerry_hiding2.png"), (CELL_SIZE, CELL_SIZE)),
@@ -105,8 +108,6 @@ class HideSeekGame:
             self.feedback_images[key] = pygame.transform.scale(self.feedback_images[key], (180, 180))
 
         self.state = GameState.MENU
-        self.max_steps = 15
-        self.steps_remaining = self.max_steps
         self.seeker1_pos = (0, 0)
         self.seeker2_pos = (7, 7)
         self.hidden_pos = None
@@ -142,7 +143,6 @@ class HideSeekGame:
                 "Player vs Player: Tom (Player 1) vs Spike (Player 2)",
                 "🐭 Jerry hides randomly each game,",
                 "You have to find him first!",
-                "🎯 Each player gets 15 steps to find him",
                 "🔥 Hot = close | ❄️ Cold = far"
             ]
             for i, line in enumerate(instructions):
@@ -352,14 +352,26 @@ class HideSeekGame:
         for x in range(GRID_SIZE):
             for y in range(GRID_SIZE):
                 rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                pygame.draw.rect(screen, DARK_GREEN if (x, y) in self.hiding_spots else WHITE, rect)
+                pygame.draw.rect(screen, WHITE, rect)
+                pygame.draw.rect(screen, BLACK, rect, 2)
+        
+        # Draw cheese wedges for hiding spots (but not where players are standing)
+        for x, y in self.hiding_spots:
+            # Only draw cheese if no player is on this spot
+            if (x, y) != self.seeker1_pos and (x, y) != self.seeker2_pos:
+                rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                screen.blit(self.cheese_image, rect.topleft)
+        
+        # Draw player images (this will be on top of cheese if they're on a hiding spot)
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                rect = pygame.Rect(y * CELL_SIZE, x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
                 if (x, y) == self.seeker1_pos:
                     screen.blit(self.tom_images[self.tom_direction], rect.topleft)
                 elif (x, y) == self.seeker2_pos:
                    screen.blit(self.spike_images[self.spike_direction], rect.topleft)
                 if self.state == GameState.GAME_OVER and (x, y) == self.hidden_pos:
                     screen.blit(self.jerry_image, rect.topleft)
-                pygame.draw.rect(screen, BLACK, rect, 2)
         
         # Draw blocks
         for block in self.blocks:
@@ -398,35 +410,34 @@ class HideSeekGame:
     def draw_ui(self):
         ui_x = WIDTH + 10
         if self.state == GameState.PLAYER1_TURN or self.state == GameState.PLAYER2_TURN:
-            screen.blit(self.font.render(f"Steps: {self.steps_remaining}", True, BLACK), (ui_x, 50))
             # Show distance to Jerry for both players
             if self.hidden_pos is not None:
                 dist1 = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
                 dist2 = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
-                screen.blit(self.font.render(f"Tom→Jerry: {dist1} steps", True, BLACK), (ui_x, 80))
-                screen.blit(self.font.render(f"Spike→Jerry: {dist2} steps", True, BLACK), (ui_x, 110))
+                screen.blit(self.font.render(f"Tom→Jerry: {dist1} steps", True, BLACK), (ui_x, 50))
+                screen.blit(self.font.render(f"Spike→Jerry: {dist2} steps", True, BLACK), (ui_x, 80))
             
             # Show remaining blocks
-            screen.blit(self.font.render(f"Tom blocks: {self.player1_blocks_remaining}", True, BLACK), (ui_x, 140))
-            screen.blit(self.font.render(f"Spike blocks: {self.player2_blocks_remaining}", True, BLACK), (ui_x, 170))
+            screen.blit(self.font.render(f"Tom blocks: {self.player1_blocks_remaining}", True, BLACK), (ui_x, 110))
+            screen.blit(self.font.render(f"Spike blocks: {self.player2_blocks_remaining}", True, BLACK), (ui_x, 140))
             
             # Show computer thinking indicator
             if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
                 if not self.player2_moved_target:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 200))
-                    screen.blit(self.font.render("(Can use Move Target)", True, ORANGE), (ui_x, 220))
+                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 170))
+                    screen.blit(self.font.render("(Can use Move Target)", True, ORANGE), (ui_x, 190))
                 else:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 200))
+                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 170))
             
             # Draw Move Target button for current player if they haven't used it
             if self.state == GameState.PLAYER1_TURN and not self.player1_moved_target:
-                self.move_target_button = pygame.Rect(ui_x, 260, 180, 40)
+                self.move_target_button = pygame.Rect(ui_x, 230, 180, 40)
                 pygame.draw.rect(screen, (100, 200, 100), self.move_target_button)
                 move_text = self.font.render("Move Target (Tom)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
             elif self.state == GameState.PLAYER2_TURN and not self.player2_moved_target and self.game_mode == 'pvp':
-                self.move_target_button = pygame.Rect(ui_x, 260, 180, 40)
+                self.move_target_button = pygame.Rect(ui_x, 230, 180, 40)
                 pygame.draw.rect(screen, (200, 100, 100), self.move_target_button)
                 move_text = self.font.render("Move Target (Spike)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
@@ -439,7 +450,7 @@ class HideSeekGame:
             blocks_remaining = self.player1_blocks_remaining if current_player == 1 else self.player2_blocks_remaining
             
             if blocks_remaining > 0:
-                self.place_block_button = pygame.Rect(ui_x, 320, 180, 40)
+                self.place_block_button = pygame.Rect(ui_x, 290, 180, 40)
                 button_color = (100, 150, 200) if current_player == 1 else (200, 100, 150)
                 pygame.draw.rect(screen, button_color, self.place_block_button)
                 player_name = "Tom" if current_player == 1 else "Spike"
@@ -449,16 +460,16 @@ class HideSeekGame:
                 
                 # Show current block orientation
                 orientation_text = self.font.render(f"Orientation: {self.block_orientation}", True, BLACK)
-                screen.blit(orientation_text, (ui_x, 370))
-                screen.blit(self.font.render("Press 'R' to rotate", True, BLACK), (ui_x, 390))
+                screen.blit(orientation_text, (ui_x, 340))
+                screen.blit(self.font.render("Press 'R' to rotate", True, BLACK), (ui_x, 360))
                 
                 # Show block placement instructions
                 if self.block_placement_mode:
-                    screen.blit(self.font.render("Click on grid to place block", True, RED), (ui_x, 410))
+                    screen.blit(self.font.render("Click on grid to place block", True, RED), (ui_x, 380))
                     if self.block_preview_valid:
-                        screen.blit(self.font.render("Green = Valid placement", True, GREEN), (ui_x, 430))
+                        screen.blit(self.font.render("Green = Valid placement", True, GREEN), (ui_x, 400))
                     else:
-                        screen.blit(self.font.render("Red = Invalid placement", True, RED), (ui_x, 430))
+                        screen.blit(self.font.render("Red = Invalid placement", True, RED), (ui_x, 400))
             else:
                 self.place_block_button = None
                 
@@ -500,7 +511,6 @@ class HideSeekGame:
         self.hidden_pos = random.choice(self.hiding_spots)
         self.seeker1_pos = (0, 0)
         self.seeker2_pos = (7, 7)
-        self.steps_remaining = self.max_steps
         self.feedback_text = ""
         self.winner = None
         self.tom_direction = "idle"
@@ -634,7 +644,6 @@ class HideSeekGame:
                                 self.tom_direction = "right"
                                 moved = True
                         if moved:
-                            self.steps_remaining -= 1
                             if self.seeker1_pos == self.hidden_pos:
                                 self.winner = "Tom (Player 1)"
                                 pygame.mixer.music.stop()
@@ -681,7 +690,6 @@ class HideSeekGame:
                                     self.spike_direction = "right"
                                     moved = True
                             if moved:
-                                self.steps_remaining -= 1
                                 if self.seeker2_pos == self.hidden_pos:
                                     self.winner = "Spike (Player 2)"
                                     pygame.mixer.music.stop()
