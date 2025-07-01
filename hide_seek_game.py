@@ -2,6 +2,7 @@ import pygame
 import sys
 import random
 import heapq
+import math
 from enum import Enum
 
 pygame.init()
@@ -17,15 +18,11 @@ FPS = 60
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-LIGHT_GRAY = (200, 200, 200)
 GREEN = (0, 255, 0)
 LIGHT_GREEN = (180, 255, 230) 
 RED = (255, 0, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
 ORANGE = (255, 165, 0)
-DARK_GREEN = (0, 128, 0)
-PURPLE = (160, 32, 240)
+
 
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 FONT = pygame.font.SysFont("Segoe UI Emoji", 28)
@@ -38,6 +35,19 @@ class GameState(Enum):
 
 class HideSeekGame:
     def __init__(self):
+        self.stars = [
+            {
+                "x": random.randint(0, WINDOW_WIDTH),
+                "y": random.randint(0, WINDOW_HEIGHT),
+                "size": random.randint(2, 5),
+                "speed": random.uniform(0.3, 0.8),
+                "color": random.choice([(255,255,255), (255,230,200), (200,220,255), (255,255,180)]),
+                "alpha": random.randint(100, 255),
+                "alpha_direction": random.choice([-1, 1])
+            }
+            for _ in range(60)
+        ]
+        self.main_menu_button = None
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
         self.big_font = pygame.font.Font(None, 36)
@@ -407,6 +417,29 @@ class HideSeekGame:
                 preview_surface.fill(preview_color)
                 screen.blit(preview_surface, preview_rect.topleft)
 
+    def draw_animated_background(self):
+        screen.fill((230, 230, 255))  
+        for star in self.stars:
+            star["y"] -= star["speed"]
+            star["size"] += 0.015
+            star["alpha"] += star["alpha_direction"] * 2
+            if star["alpha"] > 255:
+                star["alpha"] = 255
+                star["alpha_direction"] = -1
+            elif star["alpha"] < 80:
+                star["alpha"] = 80
+                star["alpha_direction"] = 1
+            if star["y"] < 0:
+                star["x"] = random.randint(0, WINDOW_WIDTH)
+                star["y"] = WINDOW_HEIGHT + random.randint(0, 100)
+                star["size"] = random.randint(2, 4)
+                star["speed"] = random.uniform(0.3, 0.8)
+                star["color"] = random.choice([(255,255,255), (255,230,200), (200,220,255), (255,255,180)])
+
+            surface = pygame.Surface((int(star["size"]*2), int(star["size"]*2)), pygame.SRCALPHA)
+            pygame.draw.circle(surface, star["color"] + (int(star["alpha"]),), (int(star["size"]), int(star["size"])), int(star["size"]))
+            screen.blit(surface, (int(star["x"] - star["size"]), int(star["y"] - star["size"])))
+
     def draw_ui(self):
         ui_x = WIDTH + 10
         if self.state == GameState.PLAYER1_TURN or self.state == GameState.PLAYER2_TURN:
@@ -414,21 +447,16 @@ class HideSeekGame:
             if self.hidden_pos is not None:
                 dist1 = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
                 dist2 = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
-                screen.blit(self.font.render(f"Tom→Jerry: {dist1} steps", True, BLACK), (ui_x, 50))
-                screen.blit(self.font.render(f"Spike→Jerry: {dist2} steps", True, BLACK), (ui_x, 80))
-            
-            # Show remaining blocks
+                screen.blit(self.font.render(f"Tom -> Jerry: {dist1} steps", True, BLACK), (ui_x, 50))
+                screen.blit(self.font.render(f"Spike -> Jerry: {dist2} steps", True, BLACK), (ui_x, 80))
+
             screen.blit(self.font.render(f"Tom blocks: {self.player1_blocks_remaining}", True, BLACK), (ui_x, 110))
             screen.blit(self.font.render(f"Spike blocks: {self.player2_blocks_remaining}", True, BLACK), (ui_x, 140))
-            
             # Show computer thinking indicator
             if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
+                screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 170))
                 if not self.player2_moved_target:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 170))
                     screen.blit(self.font.render("(Can use Move Target)", True, ORANGE), (ui_x, 190))
-                else:
-                    screen.blit(self.font.render("Computer is thinking...", True, RED), (ui_x, 170))
-            
             # Draw Move Target button for current player if they haven't used it
             if self.state == GameState.PLAYER1_TURN and not self.player1_moved_target:
                 self.move_target_button = pygame.Rect(ui_x, 230, 180, 40)
@@ -444,11 +472,10 @@ class HideSeekGame:
                 screen.blit(move_text, move_rect)
             else:
                 self.move_target_button = None
-            
             # Draw Place Block button for current player if they have blocks remaining
             current_player = 1 if self.state == GameState.PLAYER1_TURN else 2
             blocks_remaining = self.player1_blocks_remaining if current_player == 1 else self.player2_blocks_remaining
-            
+
             if blocks_remaining > 0:
                 self.place_block_button = pygame.Rect(ui_x, 290, 180, 40)
                 button_color = (100, 150, 200) if current_player == 1 else (200, 100, 150)
@@ -457,12 +484,10 @@ class HideSeekGame:
                 block_text = self.font.render(f"Place Block ({player_name})", True, (0, 0, 0))
                 block_rect = block_text.get_rect(center=self.place_block_button.center)
                 screen.blit(block_text, block_rect)
-                
                 # Show current block orientation
                 orientation_text = self.font.render(f"Orientation: {self.block_orientation}", True, BLACK)
                 screen.blit(orientation_text, (ui_x, 340))
                 screen.blit(self.font.render("Press 'R' to rotate", True, BLACK), (ui_x, 360))
-                
                 # Show block placement instructions
                 if self.block_placement_mode:
                     screen.blit(self.font.render("Click on grid to place block", True, RED), (ui_x, 380))
@@ -472,20 +497,36 @@ class HideSeekGame:
                         screen.blit(self.font.render("Red = Invalid placement", True, RED), (ui_x, 400))
             else:
                 self.place_block_button = None
-                
+
         if self.feedback_text in self.feedback_images:
             screen.blit(self.feedback_images[self.feedback_text], (ui_x, 420))
         elif self.state == GameState.GAME_OVER:
             screen.blit(self.big_font.render(f"{self.winner} Wins!", True, BLACK), (ui_x, 50))
             screen.blit(self.font.render("Press any key to restart", True, BLACK), (ui_x, 100))
-            # Draw Next Round button
-            self.next_round_button = pygame.Rect(ui_x, 160, 180, 50)
-            pygame.draw.rect(screen, (255, 200, 0), self.next_round_button)
-            next_text = self.font.render("Next Round", True, (0, 0, 0))
-            next_rect = next_text.get_rect(center=self.next_round_button.center)
-            screen.blit(next_text, next_rect)
-        else:
-            self.next_round_button = None
+
+        # Draw Next Round button
+        self.next_round_button = pygame.Rect(WINDOW_WIDTH/3, WINDOW_HEIGHT - 60, 180, 50)
+        pygame.draw.rect(screen, (255, 200, 0), self.next_round_button)
+        next_text = self.font.render("Next Round", True, (0, 0, 0))
+        next_rect = next_text.get_rect(center=self.next_round_button.center)
+        screen.blit(next_text, next_rect)
+
+        # Main Menu button at bottom-left
+        self.main_menu_button = pygame.Rect(10, WINDOW_HEIGHT - 60, 180, 50)
+        pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button)
+        menu_text = self.font.render("Main Menu", True, (0, 0, 0))
+        menu_rect = menu_text.get_rect(center=self.main_menu_button.center)
+        screen.blit(menu_text, menu_rect)
+
+        # Allow clicking main menu anytime
+        mouse_pressed = pygame.mouse.get_pressed()
+        if mouse_pressed[0] and self.main_menu_button.collidepoint(pygame.mouse.get_pos()):
+            pygame.mixer.music.stop()
+            self.state = GameState.MENU
+            self.show_title_screen()
+
+
+
 
     def move_target_to_new_location(self):
         """Move Jerry to a new random hiding location"""
@@ -701,9 +742,12 @@ class HideSeekGame:
                                     self.feedback_text = self.get_feedback(dist)
                                     self.state = GameState.PLAYER1_TURN
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if self.state == GameState.GAME_OVER and self.next_round_button and self.next_round_button.collidepoint(event.pos):
+                    if  self.next_round_button and self.next_round_button.collidepoint(event.pos):
                         self.start_game()
                         player_turn = 1
+                    elif self.state == GameState.GAME_OVER and self.main_menu_button and self.main_menu_button.collidepoint(event.pos):
+                        self.state = GameState.MENU
+                        self.show_title_screen()    
                     elif self.move_target_button and self.move_target_button.collidepoint(event.pos):
                         if self.state == GameState.PLAYER1_TURN and not self.player1_moved_target:
                             self.move_target_to_new_location()
@@ -765,6 +809,7 @@ class HideSeekGame:
                     self.computer_thinking = False
 
             screen.fill(LIGHT_GREEN)
+            self.draw_animated_background()
             if self.state != GameState.MENU:
                 self.draw_grid()
             self.draw_ui()
