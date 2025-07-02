@@ -104,6 +104,20 @@ class HideSeekGame:
 
         self.jerry_image = pygame.transform.scale(pygame.image.load("jerry/jerry_hiding2.png"), (CELL_SIZE, CELL_SIZE))
 
+        self.jerry_running_frames = [
+            pygame.transform.scale(
+                pygame.image.load(f"jerry/frame_{i:02d}_delay-0.08s.gif"), 
+                (CELL_SIZE, CELL_SIZE)
+            )
+            for i in range(14)  
+        ]
+        self.jerry_running_frame_index = 0
+        self.jerry_running_frame_timer = 0
+        self.jerry_running_frame_duration = 80  # מילישניות = 0.08s
+        self.show_jerry_running = False
+        self.jerry_running_pos = None
+        self.jerry_running_start_time = 0
+
 
         self.feedback_images = {
             "FOUND": pygame.image.load("feed_back/found.png"),
@@ -125,13 +139,26 @@ class HideSeekGame:
         self.hiding_spots = []
         self.generate_hiding_spots()
 
+        self.tutorial_image = pygame.image.load("assets/tutorial.png")
+        self.tutorial_image = pygame.transform.scale(self.tutorial_image, (870, 426))
+
+        self.player1_keys_image = pygame.image.load("assets/player1_keys.jfif")
+        self.player1_keys_image = pygame.transform.scale(self.player1_keys_image, (160, 100))
+
+        self.player2_keys_image = pygame.image.load("assets/player2_keys.jpg")
+        self.player2_keys_image = pygame.transform.scale(self.player2_keys_image, (160, 100))
+
+        self.FIND_JERRY_FIRST = pygame.image.load("assets/FIND_JERRY_FIRST.png")
+        self.FIND_JERRY_FIRST = pygame.transform.scale(self.FIND_JERRY_FIRST, (160, 160))
+
     def show_title_screen(self):
         background = pygame.image.load("assets/title_screen.png")
         background = pygame.transform.scale(background, (WINDOW_WIDTH, WINDOW_HEIGHT))
 
         button_color = (255, 200, 0)
-        button_rect_pvc = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 180, 240, 50)
-        button_rect_pvp = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 110, 240, 50)
+        button_rect_pvc = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 220, 240, 50)
+        button_rect_pvp = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 150, 240, 50)
+        button_rect_tutorial = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 80, 240, 40)
 
         running_title = True
         while running_title:
@@ -140,10 +167,13 @@ class HideSeekGame:
             # Draw buttons
             pygame.draw.rect(screen, button_color, button_rect_pvc)
             pygame.draw.rect(screen, button_color, button_rect_pvp)
+            pygame.draw.rect(screen, button_color, button_rect_tutorial)
             start_text_pvc = FONT.render("Player vs Computer", True, (0, 0, 0))
             start_text_pvp = FONT.render("Player vs Player", True, (0, 0, 0))
+            tutorial_text = FONT.render("Tutorial", True, (0, 0, 0))
             screen.blit(start_text_pvc, start_text_pvc.get_rect(center=button_rect_pvc.center))
             screen.blit(start_text_pvp, start_text_pvp.get_rect(center=button_rect_pvp.center))
+            screen.blit(tutorial_text, tutorial_text.get_rect(center=button_rect_tutorial.center))
 
             # Instructions
             instructions = [
@@ -174,6 +204,62 @@ class HideSeekGame:
                         self.game_mode = 'pvp'
                         running_title = False
                         self.start_game()
+                    elif button_rect_tutorial.collidepoint(event.pos):
+                        self.show_tutorial_screen()
+
+    def show_tutorial_screen(self):
+        running_tutorial = True
+        button_width = 160
+        button_height = 38
+        button_x = 24
+        button_y = 24
+        self.main_menu_button = pygame.Rect(button_x, button_y, button_width, button_height)
+
+        while running_tutorial:
+            screen.fill((240, 240, 255))
+
+            # כותרת
+            title = self.big_font.render("Tutorial", True, BLACK)
+            screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 30))
+
+            # 🧠 הצגת תמונה ראשית במרכז
+            tutorial_rect = self.tutorial_image.get_rect(center=(WINDOW_WIDTH // 2, 150 + self.tutorial_image.get_height() // 3.2))
+            screen.blit(self.tutorial_image, tutorial_rect.topleft)
+
+            # 🕹️ Player 1 keys – ימין למטה
+            p1_x = WINDOW_WIDTH - 200
+            p1_y = WINDOW_HEIGHT - 180
+            screen.blit(self.player1_keys_image, (p1_x, p1_y))
+            p1_text = self.font.render("Player 1", True, BLACK)
+            screen.blit(p1_text, (p1_x + 40, p1_y + 110))
+
+            # 🧀 Find Jerry First – באמצע בין השניים
+            fjf_rect = self.FIND_JERRY_FIRST.get_rect(center=(WINDOW_WIDTH // 2, p1_y + 50))
+            screen.blit(self.FIND_JERRY_FIRST, fjf_rect.topleft)
+
+            # 🕹️ Player 2 keys – שמאל למטה
+            p2_x = 60
+            p2_y = WINDOW_HEIGHT - 180
+            screen.blit(self.player2_keys_image, (p2_x, p2_y))
+            p2_text = self.font.render("Player 2", True, BLACK)
+            screen.blit(p2_text, (p2_x + 40, p2_y + 110))
+
+            # 🔙 Main Menu button
+            pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button)
+            menu_text = self.font.render("Main Menu", True, (0, 0, 0))
+            screen.blit(menu_text, menu_text.get_rect(center=self.main_menu_button.center))
+
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.main_menu_button.collidepoint(event.pos):
+                        running_tutorial = False
+
+
 
     def generate_hiding_spots(self):
         self.hiding_spots = []
@@ -415,6 +501,25 @@ class HideSeekGame:
                 preview_surface.set_alpha(100)
                 preview_surface.fill(preview_color)
                 screen.blit(preview_surface, preview_rect.topleft)
+            # ✨ הצגת ג'רי רץ במיקום הישן 
+        if self.show_jerry_running and self.jerry_running_pos:
+            if pygame.time.get_ticks() - self.jerry_running_start_time < 1100:
+                now = pygame.time.get_ticks()
+                if now - self.jerry_running_frame_timer > self.jerry_running_frame_duration:
+                    self.jerry_running_frame_index = (self.jerry_running_frame_index + 1) % len(self.jerry_running_frames)
+                    self.jerry_running_frame_timer = now
+
+                x, y = self.jerry_running_pos
+                rect = pygame.Rect(
+                    GRID_OFFSET_X + y * CELL_SIZE, 
+                    GRID_OFFSET_Y + x * CELL_SIZE, 
+                    CELL_SIZE, CELL_SIZE
+                )
+                current_frame = self.jerry_running_frames[self.jerry_running_frame_index]
+                screen.blit(current_frame, rect.topleft)
+            else:
+                self.show_jerry_running = False
+
 
     def draw_animated_background(self):
         screen.fill((230, 230, 255))  
@@ -542,6 +647,13 @@ class HideSeekGame:
     def move_target_to_new_location(self):
         """Move Jerry to a new random hiding location"""
         if self.hiding_spots:
+            self.jerry_running_pos = self.hidden_pos
+            self.show_jerry_running = True
+            self.jerry_running_start_time = pygame.time.get_ticks()
+            self.jerry_running_frame_index = 0
+            self.jerry_running_frame_timer = pygame.time.get_ticks()
+
+        
             # Choose a new location different from current
             new_pos = random.choice(self.hiding_spots)
             while new_pos == self.hidden_pos and len(self.hiding_spots) > 1:
