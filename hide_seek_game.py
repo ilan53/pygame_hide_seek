@@ -106,14 +106,14 @@ class HideSeekGame:
 
         self.jerry_running_frames = [
             pygame.transform.scale(
-                pygame.image.load(f"jerry/frame_{i:02d}_delay-0.08s.gif"), 
+                pygame.image.load(f"jerry/frame_{i:02d}_delay-0.08s.png"), 
                 (CELL_SIZE, CELL_SIZE)
             )
             for i in range(14)  
         ]
         self.jerry_running_frame_index = 0
         self.jerry_running_frame_timer = 0
-        self.jerry_running_frame_duration = 80  # מילישניות = 0.08s
+        self.jerry_running_frame_duration = 50  # milliseconds = 0.05s
         self.show_jerry_running = False
         self.jerry_running_pos = None
         self.jerry_running_start_time = 0
@@ -506,7 +506,8 @@ class HideSeekGame:
             if pygame.time.get_ticks() - self.jerry_running_start_time < 1100:
                 now = pygame.time.get_ticks()
                 if now - self.jerry_running_frame_timer > self.jerry_running_frame_duration:
-                    self.jerry_running_frame_index = (self.jerry_running_frame_index + 1) % len(self.jerry_running_frames)
+                    if self.jerry_running_frame_index < len(self.jerry_running_frames) - 1:
+                        self.jerry_running_frame_index += 1
                     self.jerry_running_frame_timer = now
 
                 x, y = self.jerry_running_pos
@@ -552,14 +553,16 @@ class HideSeekGame:
         button_spacing = 12
         # Main Menu button (leftmost)
         self.main_menu_button = pygame.Rect(24, button_y, button_width, button_height)
-        pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button)
+        pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button, border_radius=8)
+        pygame.draw.rect(screen, BLACK, self.main_menu_button, 3, border_radius=8)
         menu_text = self.font.render("Main Menu", True, (0, 0, 0))
         menu_rect = menu_text.get_rect(center=self.main_menu_button.center)
         screen.blit(menu_text, menu_rect)
         # Next Round button (to the right of Main Menu), only show if game is over
         if self.state == GameState.GAME_OVER:
             self.next_round_button = pygame.Rect(24 + button_width + button_spacing, button_y, button_width, button_height)
-            pygame.draw.rect(screen, (255, 200, 0), self.next_round_button)
+            pygame.draw.rect(screen, (200, 200, 255), self.next_round_button, border_radius=8)
+            pygame.draw.rect(screen, BLACK, self.next_round_button, 3, border_radius=8)
             next_text = self.font.render("Next Round", True, (0, 0, 0))
             next_rect = next_text.get_rect(center=self.next_round_button.center)
             screen.blit(next_text, next_rect)
@@ -597,7 +600,9 @@ class HideSeekGame:
                 action_y += 44
             elif self.state == GameState.PLAYER2_TURN and not self.player2_moved_target and self.game_mode == 'pvp':
                 self.move_target_button = pygame.Rect(ui_x, action_y, 180, 36)
-                pygame.draw.rect(screen, (200, 100, 100), self.move_target_button)
+                pygame.draw.rect(screen, (255, 200, 0), self.move_target_button, border_radius=8)
+                pygame.draw.rect(screen, BLACK, self.move_target_button, 3, border_radius=8)
+
                 move_text = self.font.render("Move Target (Spike)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
@@ -609,7 +614,6 @@ class HideSeekGame:
             blocks_remaining = self.player1_blocks_remaining if current_player == 1 else self.player2_blocks_remaining
             if blocks_remaining > 0:
                 self.place_block_button = pygame.Rect(ui_x, action_y, 180, 36)
-                button_color = (100, 150, 200) if current_player == 1 else (200, 100, 150)
                 pygame.draw.rect(screen, (160, 32, 240), self.place_block_button, border_radius=8)
                 pygame.draw.rect(screen, BLACK, self.place_block_button, 3, border_radius=8)
 
@@ -771,9 +775,12 @@ class HideSeekGame:
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN:
-                    if self.state == GameState.MENU or self.state == GameState.GAME_OVER:
+                    if self.state == GameState.MENU:
                         self.start_game()
                         player_turn = 1
+                    elif self.state == GameState.GAME_OVER:
+                        # Do nothing on key press after game over; wait for Next Round button
+                        pass
                     elif self.state == GameState.PLAYER1_TURN:
                         # Block rotation
                         if event.key == pygame.K_r:
