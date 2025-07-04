@@ -55,6 +55,7 @@ class HideSeekGame:
         self.font = pygame.font.Font(None, 24)
         self.big_font = pygame.font.Font(None, 36)
         self.game_mode = None  # 'pvc' or 'pvp'
+        self.computer_difficulty = "normal"  # 'normal' or 'hard'
         self.next_round_button = None
         self.move_target_button = None
         self.computer_thinking = False
@@ -160,20 +161,51 @@ class HideSeekGame:
         button_rect_pvp = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 150, 240, 50)
         button_rect_tutorial = pygame.Rect(WINDOW_WIDTH // 2 - 120, WINDOW_HEIGHT - 80, 240, 40)
 
+        # Difficulty selection UI
+        radio_normal = pygame.Rect(WINDOW_WIDTH // 2 - 100, WINDOW_HEIGHT - 300, 30, 30)
+        radio_hard = pygame.Rect(WINDOW_WIDTH // 2 + 40, WINDOW_HEIGHT - 300, 30, 30)
+        start_button_rect = pygame.Rect(WINDOW_WIDTH // 2 - 80, WINDOW_HEIGHT - 220, 160, 50)
+        show_difficulty = False
+        selected_difficulty = "normal"
+
         running_title = True
         while running_title:
             screen.blit(background, (0, 0))
 
             # Draw buttons
-            pygame.draw.rect(screen, button_color, button_rect_pvc)
-            pygame.draw.rect(screen, button_color, button_rect_pvp)
-            pygame.draw.rect(screen, button_color, button_rect_tutorial)
-            start_text_pvc = FONT.render("Player vs Computer", True, (0, 0, 0))
-            start_text_pvp = FONT.render("Player vs Player", True, (0, 0, 0))
-            tutorial_text = FONT.render("Tutorial", True, (0, 0, 0))
-            screen.blit(start_text_pvc, start_text_pvc.get_rect(center=button_rect_pvc.center))
-            screen.blit(start_text_pvp, start_text_pvp.get_rect(center=button_rect_pvp.center))
-            screen.blit(tutorial_text, tutorial_text.get_rect(center=button_rect_tutorial.center))
+            if not show_difficulty:
+                pygame.draw.rect(screen, button_color, button_rect_pvc)
+                pygame.draw.rect(screen, button_color, button_rect_pvp)
+                pygame.draw.rect(screen, button_color, button_rect_tutorial)
+                start_text_pvc = FONT.render("Player vs Computer", True, (0, 0, 0))
+                start_text_pvp = FONT.render("Player vs Player", True, (0, 0, 0))
+                tutorial_text = FONT.render("Tutorial", True, (0, 0, 0))
+                screen.blit(start_text_pvc, start_text_pvc.get_rect(center=button_rect_pvc.center))
+                screen.blit(start_text_pvp, start_text_pvp.get_rect(center=button_rect_pvp.center))
+                screen.blit(tutorial_text, tutorial_text.get_rect(center=button_rect_tutorial.center))
+            else:
+                # Draw difficulty selection background
+                bg_rect = pygame.Rect(WINDOW_WIDTH // 2 - 170, WINDOW_HEIGHT - 360, 360, 200)
+                pygame.draw.rect(screen, (245, 240, 255), bg_rect, border_radius=18)
+                pygame.draw.rect(screen, (120, 120, 180), bg_rect, 4, border_radius=18)
+                # Draw difficulty selection
+                diff_label = FONT.render("Computer Difficulty:", True, (0, 0, 0))
+                screen.blit(diff_label, (WINDOW_WIDTH // 2 - 140, WINDOW_HEIGHT - 340))
+                # Radio buttons
+                pygame.draw.circle(screen, BLACK, radio_normal.center, 15, 2)
+                pygame.draw.circle(screen, BLACK, radio_hard.center, 15, 2)
+                if selected_difficulty == "normal":
+                    pygame.draw.circle(screen, (0, 200, 0), radio_normal.center, 9)
+                else:
+                    pygame.draw.circle(screen, (0, 200, 0), radio_hard.center, 9)
+                normal_text = FONT.render("Normal", True, (0, 0, 0))
+                hard_text = FONT.render("Hard", True, (0, 0, 0))
+                screen.blit(normal_text, (radio_normal.right + 10, radio_normal.y - 2))
+                screen.blit(hard_text, (radio_hard.right + 10, radio_hard.y - 2))
+                # Start button
+                pygame.draw.rect(screen, button_color, start_button_rect)
+                start_text = FONT.render("Start", True, (0, 0, 0))
+                screen.blit(start_text, start_text.get_rect(center=start_button_rect.center))
 
             # Instructions
             instructions = [
@@ -196,16 +228,25 @@ class HideSeekGame:
                     pygame.quit()
                     sys.exit()
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if button_rect_pvc.collidepoint(event.pos):
-                        self.game_mode = 'pvc'
-                        running_title = False
-                        self.start_game()
-                    elif button_rect_pvp.collidepoint(event.pos):
-                        self.game_mode = 'pvp'
-                        running_title = False
-                        self.start_game()
-                    elif button_rect_tutorial.collidepoint(event.pos):
-                        self.show_tutorial_screen()
+                    if not show_difficulty:
+                        if button_rect_pvc.collidepoint(event.pos):
+                            show_difficulty = True
+                        elif button_rect_pvp.collidepoint(event.pos):
+                            self.game_mode = 'pvp'
+                            running_title = False
+                            self.start_game()
+                        elif button_rect_tutorial.collidepoint(event.pos):
+                            self.show_tutorial_screen()
+                    else:
+                        if radio_normal.collidepoint(event.pos):
+                            selected_difficulty = "normal"
+                        elif radio_hard.collidepoint(event.pos):
+                            selected_difficulty = "hard"
+                        elif start_button_rect.collidepoint(event.pos):
+                            self.game_mode = 'pvc'
+                            self.computer_difficulty = selected_difficulty
+                            running_title = False
+                            self.start_game()
 
     def show_tutorial_screen(self):
         running_tutorial = True
@@ -318,6 +359,31 @@ class HideSeekGame:
             # Check if either cell is a hiding spot
             if (x, y) in self.hiding_spots or (x + 1, y) in self.hiding_spots:
                 return False
+        # Prevent trapping a hiding spot in a corner with two blocks
+        # For each corner, if a hiding spot is there, check if this block would trap it
+        corners = [(0,0), (0,GRID_SIZE-1), (GRID_SIZE-1,0), (GRID_SIZE-1,GRID_SIZE-1)]
+        for hx, hy in self.hiding_spots:
+            if (hx, hy) in corners:
+                # For each corner, check the two adjacent cells
+                if (hx, hy) == (0,0):
+                    adj1 = (0,1)
+                    adj2 = (1,0)
+                elif (hx, hy) == (0,GRID_SIZE-1):
+                    adj1 = (0,GRID_SIZE-2)
+                    adj2 = (1,GRID_SIZE-1)
+                elif (hx, hy) == (GRID_SIZE-1,0):
+                    adj1 = (GRID_SIZE-2,0)
+                    adj2 = (GRID_SIZE-1,1)
+                elif (hx, hy) == (GRID_SIZE-1,GRID_SIZE-1):
+                    adj1 = (GRID_SIZE-2,GRID_SIZE-1)
+                    adj2 = (GRID_SIZE-1,GRID_SIZE-2)
+                # If this block would block either adjacent cell, and the other is already blocked, disallow
+                blocks_adj1 = self.is_position_blocked(adj1) or \
+                    ((orientation == "horizontal" and (x, y) == adj1) or (orientation == "vertical" and (x, y) == adj1))
+                blocks_adj2 = self.is_position_blocked(adj2) or \
+                    ((orientation == "horizontal" and (x, y) == adj2) or (orientation == "vertical" and (x, y) == adj2))
+                if blocks_adj1 and blocks_adj2:
+                    return False
         return True
 
     def place_block(self, x, y, orientation, player):
@@ -367,9 +433,96 @@ class HideSeekGame:
         return "COLD"
 
     def computer_move(self):
+        # Use difficulty to branch AI logic
+        if self.computer_difficulty == "normal":
+            # --- Move Target logic (same as hard mode) ---
+            if not self.player2_moved_target:
+                computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+                player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                if computer_dist > 6 and player_dist <= 4:
+                    self.move_target_to_new_location()
+                    self.player2_moved_target = True
+                    self.state = GameState.PLAYER1_TURN
+                    return
+            # --- Block placement logic (same as hard mode) ---
+            player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+            computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+            if (player_dist <= 3 and computer_dist > player_dist and \
+                self.player2_blocks_remaining > 0 and random.random() < 0.7):
+                if self.computer_place_block():
+                    self.state = GameState.PLAYER1_TURN
+                    return
+            # --- Movement logic: feedback-based ---
+            x, y = self.seeker2_pos
+            feedback_distance = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+            prev_pos = getattr(self, '_prev_seeker2_pos', None)
+            best_moves = []
+            min_new_distance = feedback_distance
+            for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
+                nx, ny = x+dx, y+dy
+                if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                    if self.is_position_blocked((nx, ny)):
+                        continue
+                    new_distance = self.a_star_distance((nx, ny), self.hidden_pos)
+                    if new_distance < min_new_distance:
+                        min_new_distance = new_distance
+                        best_moves = [(nx, ny)]
+                    elif new_distance == min_new_distance:
+                        best_moves.append((nx, ny))
+            # Prefer moves that decrease the distance
+            if best_moves and min_new_distance < feedback_distance:
+                chosen_move = random.choice(best_moves)
+            else:
+                # If no move decreases the distance, allow moves that keep the same distance, but avoid going back to previous position
+                same_dist_moves = []
+                for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
+                    nx, ny = x+dx, y+dy
+                    if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                        if self.is_position_blocked((nx, ny)):
+                            continue
+                        if self.a_star_distance((nx, ny), self.hidden_pos) == feedback_distance:
+                            if prev_pos is None or (nx, ny) != prev_pos:
+                                same_dist_moves.append((nx, ny))
+                if same_dist_moves:
+                    chosen_move = random.choice(same_dist_moves)
+                else:
+                    # If stuck, just pick any valid move
+                    valid_moves = []
+                    for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
+                        nx, ny = x+dx, y+dy
+                        if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                            if not self.is_position_blocked((nx, ny)):
+                                valid_moves.append((nx, ny))
+                    if valid_moves:
+                        chosen_move = random.choice(valid_moves)
+                    else:
+                        chosen_move = (x, y)
+            dx = chosen_move[0] - x
+            dy = chosen_move[1] - y
+            if dx == -1:
+                self.spike_direction = "up"
+            elif dx == 1:
+                self.spike_direction = "down"
+            elif dy == -1:
+                self.spike_direction = "left"
+            elif dy == 1:
+                self.spike_direction = "right"
+            else:
+                self.spike_direction = "idle"
+            self._prev_seeker2_pos = self.seeker2_pos
+            self.seeker2_pos = chosen_move
+            if self.seeker2_pos == self.hidden_pos:
+                self.winner = "Computer"
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load("sound_track/lose.mp3")
+                pygame.mixer.music.play()
+                self.state = GameState.GAME_OVER
+            else:
+                self.state = GameState.PLAYER1_TURN
+            return
+        # Hard: original logic
         # First, decide if computer should use Move Target button
         if not self.player2_moved_target:
-            # Computer uses Move Target if it's far from Jerry and player is closer
             computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
             player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
             
