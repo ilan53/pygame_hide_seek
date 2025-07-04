@@ -802,7 +802,7 @@ class HideSeekGame:
             self.show_title_screen()
 
     def move_target_to_new_location(self):
-        """Move Jerry to a new random hiding location"""
+        """Move Jerry to a new random hiding location, but never to a position where a player is standing"""
         if self.hiding_spots:
             self.jerry_running_pos = self.hidden_pos
             self.show_jerry_running = True
@@ -810,12 +810,14 @@ class HideSeekGame:
             self.jerry_running_frame_index = 0
             self.jerry_running_frame_timer = pygame.time.get_ticks()
 
-        
-            # Choose a new location different from current
-            new_pos = random.choice(self.hiding_spots)
-            while new_pos == self.hidden_pos and len(self.hiding_spots) > 1:
-                new_pos = random.choice(self.hiding_spots)
-            self.hidden_pos = new_pos
+            # Choose a new location different from current and not occupied by a player
+            possible_spots = [pos for pos in self.hiding_spots if pos != self.hidden_pos and pos != self.seeker1_pos and pos != self.seeker2_pos]
+            if not possible_spots:
+                # If all other spots are occupied, fallback to any spot not occupied by a player
+                possible_spots = [pos for pos in self.hiding_spots if pos != self.seeker1_pos and pos != self.seeker2_pos]
+            if possible_spots:
+                new_pos = random.choice(possible_spots)
+                self.hidden_pos = new_pos
             # Update feedback for current player
             if self.state == GameState.PLAYER1_TURN:
                 dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
