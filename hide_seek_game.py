@@ -444,11 +444,28 @@ class HideSeekGame:
                     self.player2_moved_target = True
                     self.state = GameState.PLAYER1_TURN
                     return
-            # --- Block placement logic (same as hard mode) ---
+            # --- Block placement logic (improved for normal mode) ---
             player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
             computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
-            if (player_dist <= 3 and computer_dist > player_dist and \
-                self.player2_blocks_remaining > 0 and random.random() < 0.7):
+            
+            # More aggressive block placement for normal mode
+            # Place blocks when player is close to Jerry OR when player is getting closer
+            should_place_block = False
+            
+            # Condition 1: Player is close to Jerry and computer is farther
+            if player_dist <= 4 and computer_dist > player_dist:
+                should_place_block = True
+            
+            # Condition 2: Player is getting very close (within 2 steps) and computer has blocks
+            elif player_dist <= 2:
+                should_place_block = True
+            
+            # Condition 3: Player is closer than computer by a significant margin
+            elif player_dist < computer_dist - 2:
+                should_place_block = True
+            
+            # Higher probability for normal mode (more aggressive)
+            if should_place_block and self.player2_blocks_remaining > 0 and random.random() < 0.8:
                 if self.computer_place_block():
                     self.state = GameState.PLAYER1_TURN
                     return
@@ -537,9 +554,28 @@ class HideSeekGame:
         player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
         computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
         
-        # Place block if player is close to Jerry and computer has blocks remaining
-        if (player_dist <= 3 and computer_dist > player_dist and 
-            self.player2_blocks_remaining > 0 and random.random() < 0.7):
+        # Enhanced block placement logic for hard mode
+        # More aggressive and strategic than normal mode
+        should_place_block = False
+        
+        # Condition 1: Player is close to Jerry and computer is farther
+        if player_dist <= 5 and computer_dist > player_dist:
+            should_place_block = True
+        
+        # Condition 2: Player is getting very close (within 3 steps)
+        elif player_dist <= 3:
+            should_place_block = True
+        
+        # Condition 3: Player is closer than computer by any margin
+        elif player_dist < computer_dist:
+            should_place_block = True
+        
+        # Condition 4: Strategic blocking - even if computer is closer, block to maintain advantage
+        elif computer_dist <= 4 and player_dist <= computer_dist + 2:
+            should_place_block = True
+        
+        # Higher probability and more aggressive for hard mode
+        if should_place_block and self.player2_blocks_remaining > 0 and random.random() < 0.9:
             if self.computer_place_block():
                 self.state = GameState.PLAYER1_TURN
                 return
@@ -861,65 +897,193 @@ class HideSeekGame:
         if player_dist >= computer_dist:
             return False
         
+        # For normal mode, be more aggressive with block placement
+        # Lower the threshold for "significant impact"
+        min_impact = 1 if self.computer_difficulty == "normal" else 1  # Hard mode can also place blocks with 1-step impact
+        
         # Try to block the player's path
         best_block = None
         best_impact = 0
+        best_score = -1  # Higher score is better
         
         for x in range(GRID_SIZE):
             for y in range(GRID_SIZE):
                 # Try horizontal block
                 if self.can_place_block(x, y, "horizontal"):
                     # Check if this block would block the player's path
-                    old_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    old_computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
                     
                     # Temporarily place block
                     self.blocks.append((x, y, "horizontal"))
-                    new_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    new_computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
                     self.blocks.pop()  # Remove temporary block
                     
                     # Calculate impact (how much it increases player's path)
-                    impact = new_dist - old_dist
-                    if impact > best_impact and new_dist != float('inf'):
-                        best_impact = impact
+                    player_impact = new_player_dist - old_player_dist
+                    computer_impact = new_computer_dist - old_computer_dist
+                    
+                    # Score this block placement
+                    # Higher score if it blocks player more and doesn't block computer
+                    score = player_impact * 2 - computer_impact
+                    
+                    # Hard mode gets bonus for strategic positioning
+                    if self.computer_difficulty == "hard" and self.hidden_pos is not None:
+                        # Bonus for significant impact
+                        if player_impact >= 3:
+                            score += 2
+                        # Bonus for blocking close to Jerry
+                        target_dist = abs(x - self.hidden_pos[0]) + abs(y - self.hidden_pos[1])
+                        if target_dist <= 2:
+                            score += 1
+                    
+                    if player_impact > best_impact and new_player_dist != float('inf') and score > best_score:
+                        best_impact = player_impact
+                        best_score = score
                         best_block = (x, y, "horizontal")
                 
                 # Try vertical block
                 if self.can_place_block(x, y, "vertical"):
                     # Check if this block would block the player's path
-                    old_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    old_computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
                     
                     # Temporarily place block
                     self.blocks.append((x, y, "vertical"))
-                    new_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    new_computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
                     self.blocks.pop()  # Remove temporary block
                     
                     # Calculate impact (how much it increases player's path)
-                    impact = new_dist - old_dist
-                    if impact > best_impact and new_dist != float('inf'):
-                        best_impact = impact
+                    player_impact = new_player_dist - old_player_dist
+                    computer_impact = new_computer_dist - old_computer_dist
+                    
+                    # Score this block placement
+                    # Higher score if it blocks player more and doesn't block computer
+                    score = player_impact * 2 - computer_impact
+                    
+                    # Hard mode gets bonus for strategic positioning
+                    if self.computer_difficulty == "hard" and self.hidden_pos is not None:
+                        # Bonus for significant impact
+                        if player_impact >= 3:
+                            score += 2
+                        # Bonus for blocking close to Jerry
+                        target_dist = abs(x - self.hidden_pos[0]) + abs(y - self.hidden_pos[1])
+                        if target_dist <= 2:
+                            score += 1
+                    
+                    if player_impact > best_impact and new_player_dist != float('inf') and score > best_score:
+                        best_impact = player_impact
+                        best_score = score
                         best_block = (x, y, "vertical")
         
         # Place the best block if it has significant impact
-        if best_block and best_impact >= 2:
+        if best_block and best_impact >= min_impact:
             x, y, orientation = best_block
             self.place_block(x, y, orientation, 2)
             return True
         
-        # If no good strategic block found, try to block near the player's current position
-        if player_dist <= 3:
+        # If no good strategic block found, try to block on the player's likely path
+        player_path = self.get_player_likely_path()
+        if len(player_path) > 1:  # If we have a path to block
+            # Try to block on the next few steps of the player's path
+            for i in range(1, min(4, len(player_path))):  # Look at next 3 steps
+                path_pos = player_path[i]
+                # Try horizontal block on path
+                if self.can_place_block(path_pos[0], path_pos[1], "horizontal"):
+                    # Check if this actually blocks the player's path
+                    old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.append((path_pos[0], path_pos[1], "horizontal"))
+                    new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.pop()
+                    if new_player_dist > old_player_dist and new_player_dist != float('inf'):
+                        self.place_block(path_pos[0], path_pos[1], "horizontal", 2)
+                        return True
+                # Try vertical block on path
+                if self.can_place_block(path_pos[0], path_pos[1], "vertical"):
+                    # Check if this actually blocks the player's path
+                    old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.append((path_pos[0], path_pos[1], "vertical"))
+                    new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                    self.blocks.pop()
+                    if new_player_dist > old_player_dist and new_player_dist != float('inf'):
+                        self.place_block(path_pos[0], path_pos[1], "vertical", 2)
+                        return True
+        
+        # Fallback: try to block near the player's current position
+        if player_dist <= 4:  # Increased range for normal mode
+            # Try to block in the direction the player is likely to move
             for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
                 nx, ny = self.seeker1_pos[0] + dx, self.seeker1_pos[1] + dy
                 if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
                     # Try horizontal block near player
                     if self.can_place_block(nx, ny, "horizontal"):
-                        self.place_block(nx, ny, "horizontal", 2)
-                        return True
+                        # Check if this actually blocks the player's path
+                        old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                        self.blocks.append((nx, ny, "horizontal"))
+                        new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                        self.blocks.pop()
+                        if new_player_dist > old_player_dist and new_player_dist != float('inf'):
+                            self.place_block(nx, ny, "horizontal", 2)
+                            return True
                     # Try vertical block near player
                     if self.can_place_block(nx, ny, "vertical"):
-                        self.place_block(nx, ny, "vertical", 2)
-                        return True
+                        # Check if this actually blocks the player's path
+                        old_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                        self.blocks.append((nx, ny, "vertical"))
+                        new_player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
+                        self.blocks.pop()
+                        if new_player_dist > old_player_dist and new_player_dist != float('inf'):
+                            self.place_block(nx, ny, "vertical", 2)
+                            return True
         
         return False
+
+    def get_player_likely_path(self):
+        """Get the likely path the player will take to reach Jerry"""
+        if not hasattr(self, '_player_path_cache') or self._player_path_cache[0] != (self.seeker1_pos, self.hidden_pos):
+            # Use A* to find the shortest path from player to Jerry
+            path = self.a_star_path(self.seeker1_pos, self.hidden_pos)
+            self._player_path_cache = ((self.seeker1_pos, self.hidden_pos), path)
+        return self._player_path_cache[1]
+
+    def a_star_path(self, start, goal):
+        """A* algorithm that returns the actual path, not just distance"""
+        if start == goal:
+            return [start]
+        
+        open_set = [(0, start)]
+        came_from = {}
+        g_score = {start: 0}
+        f_score = {start: abs(start[0]-goal[0]) + abs(start[1]-goal[1])}
+        
+        while open_set:
+            _, current = heapq.heappop(open_set)
+            if current == goal:
+                # Reconstruct path
+                path = []
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                path.append(start)
+                path.reverse()
+                return path
+            
+            for dx, dy in [(0,1),(1,0),(0,-1),(-1,0)]:
+                neighbor = (current[0]+dx, current[1]+dy)
+                if 0 <= neighbor[0] < GRID_SIZE and 0 <= neighbor[1] < GRID_SIZE:
+                    if self.is_position_blocked(neighbor):
+                        continue
+                    
+                    temp_g_score = g_score[current] + 1
+                    if neighbor not in g_score or temp_g_score < g_score[neighbor]:
+                        came_from[neighbor] = current
+                        g_score[neighbor] = temp_g_score
+                        f_score[neighbor] = temp_g_score + abs(neighbor[0]-goal[0]) + abs(neighbor[1]-goal[1])
+                        heapq.heappush(open_set, (f_score[neighbor], neighbor))
+        
+        return []  # No path found
 
     def run(self):
         self.show_title_screen()
