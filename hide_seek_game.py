@@ -7,8 +7,9 @@ from enum import Enum
 
 pygame.init()
 pygame.mixer.init()
+pygame.mixer.music.set_volume(0.5)
 
-GRID_SIZE = 8
+GRID_SIZE = 10
 CELL_SIZE = 60
 WIDTH = GRID_SIZE * CELL_SIZE
 HEIGHT = GRID_SIZE * CELL_SIZE
@@ -133,7 +134,7 @@ class HideSeekGame:
 
         self.state = GameState.MENU
         self.seeker1_pos = (0, 0)
-        self.seeker2_pos = (7, 7)
+        self.seeker2_pos = (GRID_SIZE - 1, GRID_SIZE - 1)
         self.hidden_pos = None
         self.feedback_text = ""
         self.winner = None
@@ -151,6 +152,51 @@ class HideSeekGame:
 
         self.FIND_JERRY_FIRST = pygame.image.load("assets/FIND_JERRY_FIRST.png")
         self.FIND_JERRY_FIRST = pygame.transform.scale(self.FIND_JERRY_FIRST, (160, 160))
+
+        self.surprise_image = pygame.image.load("assets/surprise-gift.png")
+        self.surprise_image = pygame.transform.scale(self.surprise_image, (160, 160))
+
+        # --- Frozen images ---
+        self.tom_frozen_image = pygame.transform.scale(pygame.image.load("tom/tom_frozen.png"), (CELL_SIZE, CELL_SIZE))
+        self.spike_frozen_image = pygame.transform.scale(pygame.image.load("spike/spike_frozen.png"), (CELL_SIZE, CELL_SIZE))
+        # If you have a tom frozen image, use: self.tom_frozen_image = pygame.transform.scale(pygame.image.load("tom/tom_frozen.png"), (CELL_SIZE, CELL_SIZE))
+
+        # Freeze state
+        self.player1_frozen_turns = 0
+        self.player2_frozen_turns = 0
+        # Unfreeze animation state
+        self.player1_unfreezing = False
+        self.player2_unfreezing = False
+        self.player1_unfreeze_timer = 0
+        self.player2_unfreeze_timer = 0
+        self.unfreeze_anim_duration = 500  # ms
+        self.unfreeze_anim_jitter = 6  # px
+
+        # --- Gift Box Animation ---
+        self.gift_box_frames = [
+            pygame.transform.scale(
+                pygame.image.load(f"suprise_box/on_board/frame_{i:03d}_delay-0.03s.gif"),
+                (CELL_SIZE, CELL_SIZE)
+            ) for i in range(45)
+        ]
+        self.gift_box_frame_index = 0
+        self.gift_box_frame_timer = 0
+        self.gift_box_frame_duration = 30  # ms per frame
+        self.gift_box_location = None
+        self.place_gift_box()
+
+        # --- Gift Box Pop Animation ---
+        self.gift_box_pop_frames = [
+            pygame.transform.scale(
+                pygame.image.load(f"suprise_box/take/frame_{i:03d}_delay-0.03s.gif"),
+                (CELL_SIZE, CELL_SIZE)
+            ) for i in range(114, 150)
+        ]
+        self.gift_box_popping = False
+        self.gift_box_pop_frame_index = 0
+        self.gift_box_pop_frame_timer = 0
+        self.gift_box_pop_frame_duration = 25  # ms per frame (faster)
+        self.gift_box_pop_position = None
 
     def show_title_screen(self):
         background = pygame.image.load("assets/title_screen.png")
@@ -278,6 +324,10 @@ class HideSeekGame:
             fjf_rect = self.FIND_JERRY_FIRST.get_rect(center=(WINDOW_WIDTH // 2, p1_y + 50))
             screen.blit(self.FIND_JERRY_FIRST, fjf_rect.topleft)
 
+             # 📦 Surprise gift explanation image – מתחת לתמונה הראשית
+            surprise_rect = self.surprise_image.get_rect(center=(105, tutorial_rect.bottom + -290))
+            screen.blit(self.surprise_image, surprise_rect.topleft)
+
             # 🕹️ Player 2 keys – שמאל למטה
             p2_x = 60
             p2_y = WINDOW_HEIGHT - 180
@@ -300,19 +350,28 @@ class HideSeekGame:
                     if self.main_menu_button.collidepoint(event.pos):
                         running_tutorial = False
 
-
+    def place_gift_box(self):
+        # Place the gift box at a random location not occupied by players or hiding spots
+        excluded = [(0, 0), (GRID_SIZE-1, GRID_SIZE-1)] + self.hiding_spots
+        while True:
+            pos = (random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1))
+            if pos not in excluded:
+                self.gift_box_location = pos
+                break
 
     def generate_hiding_spots(self):
         self.hiding_spots = []
         # Define starting positions that should be excluded
-        excluded_positions = [(0, 0), (7, 7)]  # Tom's and Spike's starting positions
+        excluded_positions = [(0, 0), (GRID_SIZE-1, GRID_SIZE-1)]  # Tom's and Spike's starting positions
         
-        for _ in range(random.randint(6, 8)):
+        for _ in range(random.randint(8, 12)):
             while True:
                 pos = (random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1))
                 if pos not in self.hiding_spots and pos not in excluded_positions:
                     self.hiding_spots.append(pos)
                     break
+        # After hiding spots are generated, place the gift box
+        self.place_gift_box()
 
     def is_position_blocked(self, pos):
         """Check if a position is blocked by any block"""
@@ -344,6 +403,10 @@ class HideSeekGame:
             # Check if either cell is a hiding spot
             if (x, y) in self.hiding_spots or (x, y + 1) in self.hiding_spots:
                 return False
+            # Prevent blocking a gift box
+            if self.gift_box_location is not None:
+                if (x, y) == self.gift_box_location or (x, y + 1) == self.gift_box_location:
+                    return False
         else:  # vertical
             # Check if both cells are within bounds
             if x + 1 >= GRID_SIZE:
@@ -359,6 +422,10 @@ class HideSeekGame:
             # Check if either cell is a hiding spot
             if (x, y) in self.hiding_spots or (x + 1, y) in self.hiding_spots:
                 return False
+            # Prevent blocking a gift box
+            if self.gift_box_location is not None:
+                if (x, y) == self.gift_box_location or (x + 1, y) == self.gift_box_location:
+                    return False
         # Prevent trapping a hiding spot in a corner with two blocks
         # For each corner, if a hiding spot is there, check if this block would trap it
         corners = [(0,0), (0,GRID_SIZE-1), (GRID_SIZE-1,0), (GRID_SIZE-1,GRID_SIZE-1)]
@@ -448,25 +515,47 @@ class HideSeekGame:
             player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
             computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
             
-            # More aggressive block placement for normal mode
-            # Place blocks when player is close to Jerry OR when player is getting closer
-            should_place_block = False
-            
-            # Condition 1: Player is close to Jerry and computer is farther
-            if player_dist <= 4 and computer_dist > player_dist:
-                should_place_block = True
-            
-            # Condition 2: Player is getting very close (within 2 steps) and computer has blocks
-            elif player_dist <= 2:
-                should_place_block = True
-            
-            # Condition 3: Player is closer than computer by a significant margin
-            elif player_dist < computer_dist - 2:
-                should_place_block = True
-            
-            # Higher probability for normal mode (more aggressive)
-            if should_place_block and self.player2_blocks_remaining > 0 and random.random() < 0.8:
-                if self.computer_place_block():
+            # --- Gift box logic: go for the gift if it helps ---
+            go_for_gift = False
+            if self.gift_box_location:
+                # Get path to gift and to Jerry
+                path_to_gift = self.a_star_path(self.seeker2_pos, self.gift_box_location)
+                path_to_jerry = self.a_star_path(self.seeker2_pos, self.hidden_pos)
+                # If the gift is on the way to Jerry, or if freezing the player would let computer win
+                player_path_to_jerry = self.a_star_path(self.seeker1_pos, self.hidden_pos)
+                if self.gift_box_location in path_to_jerry:
+                    go_for_gift = True
+                else:
+                    # If computer is behind, but freezing player would let it catch up or win
+                    if player_dist < computer_dist and (computer_dist - player_dist) <= 2:
+                        # Estimate: if player is frozen for 2 turns, computer can catch up
+                        go_for_gift = True
+            if go_for_gift:
+                # Move toward the gift box
+                path = self.a_star_path(self.seeker2_pos, self.gift_box_location)
+                if len(path) > 1:
+                    next_pos = path[1]
+                    dx = next_pos[0] - self.seeker2_pos[0]
+                    dy = next_pos[1] - self.seeker2_pos[1]
+                    if dx == -1:
+                        self.spike_direction = "up"
+                    elif dx == 1:
+                        self.spike_direction = "down"
+                    elif dy == -1:
+                        self.spike_direction = "left"
+                    elif dy == 1:
+                        self.spike_direction = "right"
+                    else:
+                        self.spike_direction = "idle"
+                    self.seeker2_pos = next_pos
+                    # Trigger gift box animation and freeze opponent immediately
+                    if self.seeker2_pos == self.gift_box_location:
+                        self.gift_box_popping = True
+                        self.gift_box_pop_position = self.gift_box_location
+                        self.gift_box_pop_frame_index = 0
+                        self.gift_box_pop_frame_timer = pygame.time.get_ticks()
+                        self.gift_box_location = None
+                        self.freeze_opponent(2)
                     self.state = GameState.PLAYER1_TURN
                     return
             # --- Movement logic: feedback-based ---
@@ -553,6 +642,45 @@ class HideSeekGame:
         # Decide whether to place a block or move
         player_dist = self.a_star_distance(self.seeker1_pos, self.hidden_pos)
         computer_dist = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
+        
+        # --- Gift box logic: go for the gift if it helps (hard mode) ---
+        go_for_gift = False
+        if self.gift_box_location:
+            path_to_gift = self.a_star_path(self.seeker2_pos, self.gift_box_location)
+            path_to_jerry = self.a_star_path(self.seeker2_pos, self.hidden_pos)
+            player_path_to_jerry = self.a_star_path(self.seeker1_pos, self.hidden_pos)
+            if self.gift_box_location in path_to_jerry:
+                go_for_gift = True
+            else:
+                if player_dist < computer_dist and (computer_dist - player_dist) <= 2:
+                    go_for_gift = True
+        if go_for_gift:
+            path = self.a_star_path(self.seeker2_pos, self.gift_box_location)
+            if len(path) > 1:
+                next_pos = path[1]
+                dx = next_pos[0] - self.seeker2_pos[0]
+                dy = next_pos[1] - self.seeker2_pos[1]
+                if dx == -1:
+                    self.spike_direction = "up"
+                elif dx == 1:
+                    self.spike_direction = "down"
+                elif dy == -1:
+                    self.spike_direction = "left"
+                elif dy == 1:
+                    self.spike_direction = "right"
+                else:
+                    self.spike_direction = "idle"
+                self.seeker2_pos = next_pos
+                # Trigger gift box animation and freeze opponent immediately
+                if self.seeker2_pos == self.gift_box_location:
+                    self.gift_box_popping = True
+                    self.gift_box_pop_position = self.gift_box_location
+                    self.gift_box_pop_frame_index = 0
+                    self.gift_box_pop_frame_timer = pygame.time.get_ticks()
+                    self.gift_box_location = None
+                    self.freeze_opponent(2)
+                self.state = GameState.PLAYER1_TURN
+                return
         
         # Enhanced block placement logic for hard mode
         # More aggressive and strategic than normal mode
@@ -646,16 +774,71 @@ class HideSeekGame:
                 rect = pygame.Rect(GRID_OFFSET_X + y * CELL_SIZE, GRID_OFFSET_Y + x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
                 screen.blit(self.cheese_image, rect.topleft)
         
+        # Draw animated gift box if present and not popping
+        if self.gift_box_location and not self.gift_box_popping:
+            gx, gy = self.gift_box_location
+            rect = pygame.Rect(GRID_OFFSET_X + gy * CELL_SIZE, GRID_OFFSET_Y + gx * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            now = pygame.time.get_ticks()
+            if now - self.gift_box_frame_timer > self.gift_box_frame_duration:
+                self.gift_box_frame_index = (self.gift_box_frame_index + 1) % len(self.gift_box_frames)
+                self.gift_box_frame_timer = now
+            current_frame = self.gift_box_frames[self.gift_box_frame_index]
+            screen.blit(current_frame, rect.topleft)
+        
         # Draw player images (this will be on top of cheese if they're on a hiding spot)
         for x in range(GRID_SIZE):
             for y in range(GRID_SIZE):
                 rect = pygame.Rect(GRID_OFFSET_X + y * CELL_SIZE, GRID_OFFSET_Y + x * CELL_SIZE, CELL_SIZE, CELL_SIZE)
                 if (x, y) == self.seeker1_pos:
-                    screen.blit(self.tom_images[self.tom_direction], rect.topleft)
+                    if self.player1_frozen_turns > 0:
+                        screen.blit(self.tom_frozen_image, rect.topleft)
+                    elif self.player1_unfreezing:
+                        now = pygame.time.get_ticks()
+                        if now - self.player1_unfreeze_timer < self.unfreeze_anim_duration:
+                            jitter = self.unfreeze_anim_jitter
+                            offset_x = random.randint(-jitter, jitter)
+                            offset_y = random.randint(-jitter, jitter)
+                            screen.blit(self.tom_frozen_image, (rect.x + offset_x, rect.y + offset_y))
+                        else:
+                            self.player1_unfreezing = False
+                            self.tom_direction = "idle"
+                            screen.blit(self.tom_images[self.tom_direction], rect.topleft)
+                    else:
+                        screen.blit(self.tom_images[self.tom_direction], rect.topleft)
                 elif (x, y) == self.seeker2_pos:
-                   screen.blit(self.spike_images[self.spike_direction], rect.topleft)
+                    if self.player2_frozen_turns > 0:
+                        screen.blit(self.spike_frozen_image, rect.topleft)
+                    elif self.player2_unfreezing:
+                        now = pygame.time.get_ticks()
+                        if now - self.player2_unfreeze_timer < self.unfreeze_anim_duration:
+                            jitter = self.unfreeze_anim_jitter
+                            offset_x = random.randint(-jitter, jitter)
+                            offset_y = random.randint(-jitter, jitter)
+                            screen.blit(self.spike_frozen_image, (rect.x + offset_x, rect.y + offset_y))
+                        else:
+                            self.player2_unfreezing = False
+                            self.spike_direction = "idle"
+                            screen.blit(self.spike_images[self.spike_direction], rect.topleft)
+                    else:
+                        screen.blit(self.spike_images[self.spike_direction], rect.topleft)
                 if self.state == GameState.GAME_OVER and (x, y) == self.hidden_pos:
                     screen.blit(self.jerry_image, rect.topleft)
+        
+        # Draw popping animation if active (on top of player)
+        if self.gift_box_popping and self.gift_box_pop_position:
+            gx, gy = self.gift_box_pop_position
+            rect = pygame.Rect(GRID_OFFSET_X + gy * CELL_SIZE, GRID_OFFSET_Y + gx * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            now = pygame.time.get_ticks()
+            if now - self.gift_box_pop_frame_timer > self.gift_box_pop_frame_duration:
+                self.gift_box_pop_frame_index += 1
+                self.gift_box_pop_frame_timer = now
+            if self.gift_box_pop_frame_index < len(self.gift_box_pop_frames):
+                current_frame = self.gift_box_pop_frames[self.gift_box_pop_frame_index]
+                screen.blit(current_frame, rect.topleft)
+            else:
+                # Animation finished, remove box
+                self.gift_box_popping = False
+                self.gift_box_pop_position = None
         
         # Draw blocks
         for block in self.blocks:
@@ -758,6 +941,15 @@ class HideSeekGame:
         else:
             self.next_round_button = None
 
+        # --- Display winner at the top center if game is over ---
+        if self.state == GameState.GAME_OVER and self.winner:
+            win_text = self.big_font.render(f"{self.winner} Wins!", True, BLACK)
+            win_rect = win_text.get_rect(center=(WINDOW_WIDTH // 2, 40))
+            screen.blit(win_text, win_rect)
+            restart_text = self.font.render("", True, BLACK)
+            restart_rect = restart_text.get_rect(center=(WINDOW_WIDTH // 2, 80))
+            screen.blit(restart_text, restart_rect)
+
         # --- Move side text and action buttons to the right side ---
         ui_x = WINDOW_WIDTH - 220
         ui_y = 80
@@ -783,7 +975,7 @@ class HideSeekGame:
                 pygame.draw.rect(screen, (255, 200, 0), self.move_target_button, border_radius=8)
                 pygame.draw.rect(screen, BLACK, self.move_target_button, 3, border_radius=8)
 
-                move_text = self.font.render("Move Target (Tom)", True, (0, 0, 0))
+                move_text = self.font.render("Warn Jerry (Tom)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
                 action_y += 44
@@ -792,7 +984,7 @@ class HideSeekGame:
                 pygame.draw.rect(screen, (255, 200, 0), self.move_target_button, border_radius=8)
                 pygame.draw.rect(screen, BLACK, self.move_target_button, 3, border_radius=8)
 
-                move_text = self.font.render("Move Target (Spike)", True, (0, 0, 0))
+                move_text = self.font.render("Warn Jerry (Spike)", True, (0, 0, 0))
                 move_rect = move_text.get_rect(center=self.move_target_button.center)
                 screen.blit(move_text, move_rect)
                 action_y += 44
@@ -826,9 +1018,6 @@ class HideSeekGame:
         # Feedback image and game over text remain on the right
         if self.feedback_text in self.feedback_images:
             screen.blit(self.feedback_images[self.feedback_text], (ui_x, WINDOW_HEIGHT - 240))
-        elif self.state == GameState.GAME_OVER:
-            screen.blit(self.big_font.render(f"{self.winner} Wins!", True, BLACK), (ui_x, 50))
-            screen.blit(self.font.render("Press any key to restart", True, BLACK), (ui_x, 100))
 
         # Allow clicking main menu anytime
         mouse_pressed = pygame.mouse.get_pressed()
@@ -868,7 +1057,7 @@ class HideSeekGame:
         self.generate_hiding_spots()
         self.hidden_pos = random.choice(self.hiding_spots)
         self.seeker1_pos = (0, 0)
-        self.seeker2_pos = (7, 7)
+        self.seeker2_pos = (GRID_SIZE - 1, GRID_SIZE - 1)
         self.feedback_text = ""
         self.winner = None
         self.tom_direction = "idle"
@@ -884,6 +1073,16 @@ class HideSeekGame:
         self.block_orientation = "horizontal"
         self.block_preview_pos = None
         self.block_preview_valid = False
+        # Reset freeze state
+        self.player1_frozen_turns = 0
+        self.player2_frozen_turns = 0
+        self.player1_unfreezing = False
+        self.player2_unfreezing = False
+        self.player1_unfreeze_timer = 0
+        self.player2_unfreeze_timer = 0
+        # Reset gift box animation
+        self.gift_box_frame_index = 0
+        self.gift_box_frame_timer = pygame.time.get_ticks()
 
     def computer_place_block(self):
         """Computer places a block strategically to interfere with player's path"""
@@ -1132,6 +1331,14 @@ class HideSeekGame:
                                 self.tom_direction = "right"
                                 moved = True
                         if moved:
+                            # Check for gift box collection
+                            if self.gift_box_location and self.seeker1_pos == self.gift_box_location:
+                                self.gift_box_popping = True
+                                self.gift_box_pop_position = self.gift_box_location
+                                self.gift_box_pop_frame_index = 0
+                                self.gift_box_pop_frame_timer = pygame.time.get_ticks()
+                                self.gift_box_location = None
+                                self.freeze_opponent(1)
                             if self.seeker1_pos == self.hidden_pos:
                                 self.winner = "Tom (Player 1)"
                                 pygame.mixer.music.stop()
@@ -1178,10 +1385,21 @@ class HideSeekGame:
                                     self.spike_direction = "right"
                                     moved = True
                             if moved:
+                                # Check for gift box collection
+                                if self.gift_box_location and self.seeker2_pos == self.gift_box_location:
+                                    self.gift_box_popping = True
+                                    self.gift_box_pop_position = self.gift_box_location
+                                    self.gift_box_pop_frame_index = 0
+                                    self.gift_box_pop_frame_timer = pygame.time.get_ticks()
+                                    self.gift_box_location = None
+                                    self.freeze_opponent(2)
                                 if self.seeker2_pos == self.hidden_pos:
                                     self.winner = "Spike (Player 2)"
                                     pygame.mixer.music.stop()
-                                    pygame.mixer.music.load("sound_track/lose.mp3")
+                                    if self.game_mode == 'pvp':
+                                        pygame.mixer.music.load("sound_track/spike_win.wav")
+                                    else:
+                                        pygame.mixer.music.load("sound_track/lose.mp3")
                                     pygame.mixer.music.play()
                                     self.state = GameState.GAME_OVER
                                 else:
@@ -1247,6 +1465,34 @@ class HideSeekGame:
                         else:
                             self.block_preview_pos = None
 
+            # Handle freezing and skipping turns
+            # Player 1 frozen logic
+            if self.state == GameState.PLAYER1_TURN and self.player1_frozen_turns > 0:
+                self.player1_frozen_turns -= 1
+                if self.player1_frozen_turns == 0:
+                    self.player1_unfreezing = True
+                    self.player1_unfreeze_timer = pygame.time.get_ticks()
+                self.state = GameState.PLAYER2_TURN if self.game_mode == 'pvp' else GameState.PLAYER2_TURN
+                continue
+            # Player 2 frozen logic
+            if self.state == GameState.PLAYER2_TURN and self.player2_frozen_turns > 0:
+                self.player2_frozen_turns -= 1
+                if self.player2_frozen_turns == 0:
+                    self.player2_unfreezing = True
+                    self.player2_unfreeze_timer = pygame.time.get_ticks()
+                self.state = GameState.PLAYER1_TURN
+                continue
+
+            # --- Computer collects gift box logic ---
+            if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
+                if self.gift_box_location and self.seeker2_pos == self.gift_box_location:
+                    self.gift_box_popping = True
+                    self.gift_box_pop_position = self.gift_box_location
+                    self.gift_box_pop_frame_index = 0
+                    self.gift_box_pop_frame_timer = pygame.time.get_ticks()
+                    self.gift_box_location = None
+                    self.freeze_opponent(2)
+
             if self.state == GameState.PLAYER2_TURN and self.game_mode != 'pvp':
                 if not self.computer_thinking:
                     self.computer_thinking = True
@@ -1264,6 +1510,13 @@ class HideSeekGame:
             self.clock.tick(FPS)
         pygame.quit()
         sys.exit()
+
+    def freeze_opponent(self, player):
+        # player: 1 or 2 (the one who collected the gift)
+        if player == 1:
+            self.player2_frozen_turns = 2
+        else:
+            self.player1_frozen_turns = 2
 
 if __name__ == "__main__":
     HideSeekGame().run()
