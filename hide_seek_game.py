@@ -142,7 +142,7 @@ class HideSeekGame:
         self.generate_hiding_spots()
 
         self.tutorial_image = pygame.image.load("assets/tutorial.png")
-        self.tutorial_image = pygame.transform.scale(self.tutorial_image, (870, 426))
+        self.tutorial_image = pygame.transform.scale(self.tutorial_image, (887, 426))
 
         self.player1_keys_image = pygame.image.load("assets/player1_keys.jfif")
         self.player1_keys_image = pygame.transform.scale(self.player1_keys_image, (160, 100))
