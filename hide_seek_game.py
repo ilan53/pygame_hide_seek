@@ -198,7 +198,15 @@ class HideSeekGame:
         self.gift_box_pop_frame_duration = 25  # ms per frame (faster)
         self.gift_box_pop_position = None
 
+        # --- Score tracking ---
+        self.scores = {"Tom": 0, "Spike": 0, "Computer": 0}
+        self.last_game_mode = None
+        self.debug_message = None
+
     def show_title_screen(self):
+        # Always reset scores and last_game_mode when entering main menu
+        self.scores = {"Tom": 0, "Spike": 0, "Computer": 0}
+        self.last_game_mode = None
         background = pygame.image.load("assets/title_screen.png")
         background = pygame.transform.scale(background, (WINDOW_WIDTH, WINDOW_HEIGHT))
 
@@ -558,6 +566,19 @@ class HideSeekGame:
                         self.freeze_opponent(2)
                     self.state = GameState.PLAYER1_TURN
                     return
+            # --- Block placement logic for normal mode ---
+            should_place_block = False
+            if player_dist <= 5 and computer_dist > player_dist:
+                should_place_block = True
+            elif player_dist <= 3:
+                should_place_block = True
+            elif player_dist < computer_dist:
+                should_place_block = True
+
+            if should_place_block and self.player2_blocks_remaining > 0 and random.random() < 0.5:  # 50% chance for normal mode
+                if self.computer_place_block():
+                    self.state = GameState.PLAYER1_TURN
+                    return
             # --- Movement logic: feedback-based ---
             x, y = self.seeker2_pos
             feedback_distance = self.a_star_distance(self.seeker2_pos, self.hidden_pos)
@@ -619,6 +640,11 @@ class HideSeekGame:
             self.seeker2_pos = chosen_move
             if self.seeker2_pos == self.hidden_pos:
                 self.winner = "Computer"
+                # debug_msg = f"DEBUG: last_game_mode={self.last_game_mode}, Computer score before={self.scores['Computer']}"
+                if self.last_game_mode == 'pvc':
+                    self.scores["Computer"] += 1
+                    # debug_msg += f", after={self.scores['Computer']}"
+                # self.debug_message = debug_msg
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load("sound_track/lose.mp3")
                 pygame.mixer.music.play()
@@ -708,6 +734,20 @@ class HideSeekGame:
                 self.state = GameState.PLAYER1_TURN
                 return
         
+        # --- Block placement logic for normal mode ---
+        should_place_block = False
+        if player_dist <= 5 and computer_dist > player_dist:
+            should_place_block = True
+        elif player_dist <= 3:
+            should_place_block = True
+        elif player_dist < computer_dist:
+            should_place_block = True
+
+        if should_place_block and self.player2_blocks_remaining > 0 and random.random() < 0.5:  # 50% chance for normal mode
+            if self.computer_place_block():
+                self.state = GameState.PLAYER1_TURN
+                return
+        
         # Regular movement logic
         best_move = None
         best_score = float('inf')
@@ -753,6 +793,11 @@ class HideSeekGame:
             self.seeker2_pos = best_move
             if self.seeker2_pos == self.hidden_pos:
                 self.winner = "Computer"
+                debug_msg = f"DEBUG: last_game_mode={self.last_game_mode}, Computer score before={self.scores['Computer']}"
+                if self.last_game_mode == 'pvc':
+                    self.scores["Computer"] += 1
+                    debug_msg += f", after={self.scores['Computer']}"
+                self.debug_message = debug_msg
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load("sound_track/lose.mp3")
                 pygame.mixer.music.play()
@@ -1026,6 +1071,23 @@ class HideSeekGame:
             self.state = GameState.MENU
             self.show_title_screen()
 
+        # --- Display scores at the top right ---
+        score_margin = 24
+        score_text = None
+        if self.last_game_mode == 'pvp':
+            score_text = self.font.render(f"Score: Tom {self.scores['Tom']}  |  Spike {self.scores['Spike']}", True, BLACK)
+        elif self.last_game_mode == 'pvc':
+            score_text = self.font.render(f"Score: Tom {self.scores['Tom']}  |  Computer {self.scores['Computer']}", True, BLACK)
+        if score_text:
+            score_rect = score_text.get_rect(topright=(WINDOW_WIDTH - score_margin, score_margin))
+            screen.blit(score_text, score_rect)
+
+        # --- Display debug message if present ---
+        if hasattr(self, 'debug_message') and self.debug_message:
+            debug_font = pygame.font.SysFont("Consolas", 22)
+            debug_text = debug_font.render(self.debug_message, True, (200, 0, 0))
+            screen.blit(debug_text, (40, 80))
+
     def move_target_to_new_location(self):
         """Move Jerry to a new random hiding location, but never to a position where a player is standing"""
         if self.hiding_spots:
@@ -1083,6 +1145,9 @@ class HideSeekGame:
         # Reset gift box animation
         self.gift_box_frame_index = 0
         self.gift_box_frame_timer = pygame.time.get_ticks()
+        # Track last game mode for score display (always set to current game mode)
+        if self.game_mode:
+            self.last_game_mode = self.game_mode
 
     def computer_place_block(self):
         """Computer places a block strategically to interfere with player's path"""
@@ -1341,6 +1406,10 @@ class HideSeekGame:
                                 self.freeze_opponent(1)
                             if self.seeker1_pos == self.hidden_pos:
                                 self.winner = "Tom (Player 1)"
+                                if self.last_game_mode == 'pvp':
+                                    self.scores["Tom"] += 1
+                                else:
+                                    self.scores["Tom"] += 1
                                 pygame.mixer.music.stop()
                                 pygame.mixer.music.load("sound_track/win.wav")
                                 pygame.mixer.music.play()
@@ -1395,6 +1464,10 @@ class HideSeekGame:
                                     self.freeze_opponent(2)
                                 if self.seeker2_pos == self.hidden_pos:
                                     self.winner = "Spike (Player 2)"
+                                    if self.last_game_mode == 'pvp':
+                                        self.scores["Spike"] += 1
+                                    elif self.last_game_mode == 'pvc':
+                                        self.scores["Computer"] += 1
                                     pygame.mixer.music.stop()
                                     if self.game_mode == 'pvp':
                                         pygame.mixer.music.load("sound_track/spike_win.wav")
@@ -1411,6 +1484,7 @@ class HideSeekGame:
                         self.start_game()
                         player_turn = 1
                     elif self.state == GameState.GAME_OVER and self.main_menu_button and self.main_menu_button.collidepoint(event.pos):
+                        # No need to reset here anymore
                         self.state = GameState.MENU
                         self.show_title_screen()    
                     elif self.move_target_button and self.move_target_button.collidepoint(event.pos):
