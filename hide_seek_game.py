@@ -261,20 +261,6 @@ class HideSeekGame:
                 start_text = FONT.render("Start", True, (0, 0, 0))
                 screen.blit(start_text, start_text.get_rect(center=start_button_rect.center))
 
-            # Instructions
-            instructions = [
-                "🎮 Choose a mode:",
-                "Player vs Computer: Tom (You) vs Spike (Computer)",
-                "Player vs Player: Tom (Player 1) vs Spike (Player 2)",
-                "🐭 Jerry hides randomly each game,",
-                "You have to find him first!",
-                "🔥 Hot = close | ❄️ Cold = far"
-            ]
-            for i, line in enumerate(instructions):
-                instr = FONT.render(line, True, (0, 0, 0))
-                instr_rect = instr.get_rect(center=(WINDOW_WIDTH // 2, 60 + i * 32))
-                screen.blit(instr, instr_rect)
-
             pygame.display.flip()
 
             for event in pygame.event.get():
