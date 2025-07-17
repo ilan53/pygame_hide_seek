@@ -330,7 +330,9 @@ class HideSeekGame:
             screen.blit(p2_text, (p2_x + 40, p2_y + 110))
 
             # 🔙 Main Menu button
-            pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button)
+            self.main_menu_button = pygame.Rect(button_x, button_y, button_width, button_height)
+            pygame.draw.rect(screen, (200, 200, 255), self.main_menu_button, border_radius=8)
+            pygame.draw.rect(screen, BLACK, self.main_menu_button, 3, border_radius=8)
             menu_text = self.font.render("Main Menu", True, (0, 0, 0))
             screen.blit(menu_text, menu_text.get_rect(center=self.main_menu_button.center))
 
