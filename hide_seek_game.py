@@ -781,11 +781,11 @@ class HideSeekGame:
             self.seeker2_pos = best_move
             if self.seeker2_pos == self.hidden_pos:
                 self.winner = "Computer"
-                debug_msg = f"DEBUG: last_game_mode={self.last_game_mode}, Computer score before={self.scores['Computer']}"
+                #debug_msg = f"DEBUG: last_game_mode={self.last_game_mode}, Computer score before={self.scores['Computer']}"
                 if self.last_game_mode == 'pvc':
                     self.scores["Computer"] += 1
-                    debug_msg += f", after={self.scores['Computer']}"
-                self.debug_message = debug_msg
+                    #debug_msg += f", after={self.scores['Computer']}"
+                #self.debug_message = debug_msg
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load("sound_track/lose.mp3")
                 pygame.mixer.music.play()
