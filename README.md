@@ -12,10 +12,12 @@ A fun two-player hide and seek game built with Python and Pygame where Tom (you)
 - **Visual Feedback**: Hot/Cold system with visual indicators
 - **Distance Display**: Shows steps to Jerry for both players
 - **Sound Effects**: Background music and game sounds
-- **A\* Pathfinding**: Smart AI movement for Spike
+- **A* Pathfinding**: Smart AI movement for Spike
 - **Enhanced Computer AI**: Computer can use Move Target button and considers both players' positions
 - **Beautiful Graphics**: Custom sprites and animations
 - **Next Round Button**: Quick restart without returning to menu
+- **Block Placement**: Each player can place one block per game to block the opponent's path. Blocks can be placed horizontally or vertically (press **'R'** to rotate).
+- **Surprise Gift Box**: A surprise gift box appears on the board. Collecting it will **freeze your opponent for 2 turns**!
 
 ## Installation
 
@@ -59,10 +61,11 @@ A fun two-player hide and seek game built with Python and Pygame where Tom (you)
      - Player 1 (Tom): Use arrow keys
      - Player 2 (Spike): Use WASD keys
    - Find Jerry before your opponent does
-   - You have 15 steps to find Jerry
+   - **Block your opponent's movement**: Each player can place one block per game to block the opponent's path. Click the "Place Block" button, then click on the grid. Press **'R'** to rotate the block between horizontal and vertical.
    - Visual feedback shows how close you are to Jerry
    - **Move Target**: Each player can click the "Move Target" button once per game to move Jerry to a new location
-   - **Computer AI**: In Player vs Computer mode, the computer can strategically use the Move Target button and considers both players' positions when making decisions
+   - **Surprise Gift Box**: Collect the gift box to **freeze your opponent for 2 turns**. The frozen player will skip their next two turns.
+   - **Computer AI**: In Player vs Computer mode, the computer can strategically use the Move Target button, place blocks, and considers both players' positions when making decisions
 
 3. **Distance Display**:
 
@@ -85,16 +88,20 @@ A fun two-player hide and seek game built with Python and Pygame where Tom (you)
 ### Player vs Computer Mode
 
 - **Arrow Keys**: Move Tom
-- **Mouse**: Click buttons in menus
+- **Mouse**: Click buttons in menus, "Move Target", and "Place Block"
 - **Move Target Button**: Click to move Jerry once per game
+- **Place Block Button**: Click to place a block once per game, then click on the grid to place it
+- **R**: Rotate block orientation (horizontal/vertical) during block placement
 - **ESC**: Quit game
 
 ### Player vs Player Mode
 
 - **Player 1 (Tom)**: Arrow keys
 - **Player 2 (Spike)**: WASD keys
-- **Mouse**: Click buttons in menus
+- **Mouse**: Click buttons in menus, "Move Target", and "Place Block"
 - **Move Target Button**: Click to move Jerry once per game (each player)
+- **Place Block Button**: Click to place a block once per game (each player), then click on the grid to place it
+- **R**: Rotate block orientation (horizontal/vertical) during block placement
 - **ESC**: Quit game
 
 ## File Structure
@@ -132,7 +139,7 @@ The game is built with:
 
 - **Python 3.12** - Programming language
 - **Pygame 2.6.1** - Game development framework
-- **A\* Algorithm** - Pathfinding for AI
+- **A* Algorithm** - Pathfinding for AI
 - **Custom Sprites** - Character and UI graphics
 
 ## Recent Updates
@@ -145,5 +152,6 @@ The game is built with:
 - ✅ Improved game mode selection interface
 - ✅ Fixed movement controls and game flow
 - ✅ Added computer thinking delay and indicator
+- ✅ Added block placement and surprise gift box mechanics
 
 Enjoy playing! 🎮
